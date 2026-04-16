@@ -228,13 +228,18 @@ grep -nE "public\s+[A-Z]\w+Response\s+[A-Z]\w+\(" <PATH>/src/main/java/com/pichi
 
 Método en PascalCase → **MEDIUM** (rompe convención Java).
 
-### Check 3.4 — `postProcessWsdl.groovy` sin decapitalize [COMMIT-bf913b9] (solo SOAP)
+### Check 3.4 — `postProcessWsdl.groovy` sin decapitalize activo [COMMIT-bf913b9] (solo SOAP)
+
+Solo detecta **invocaciones activas** de `decapitalize` (no la mera declaración de la función).
 
 ```bash
-grep -nE "decapitalize|injectXmlRootElement|updatePackageInfo" <PATH>/gradle/postProcessWsdl.groovy
+# Invocaciones activas (call-site): variable.decapitalize(...) o = decapitalize(...)
+grep -nE "\.decapitalize\(|= decapitalize\(" <PATH>/gradle/postProcessWsdl.groovy
 ```
 
 Cualquier match → **HIGH**. Revertido en commit `bf913b9` del 0007 (2026-04-14).
+
+**Nota:** las funciones `injectXmlRootElement()` y `updatePackageInfo()` son **necesarias** en el patrón del banco (generan `@XmlRootElement` y `package-info.java`), NO son problemáticas. Solo `decapitalize` invocada activamente rompería el PascalCase de los elementos raíz.
 
 ---
 
@@ -433,8 +438,10 @@ grep -B2 "buildErrorResponse" <PATH>/src/main/java/com/pichincha/sp/infrastructu
 Cualquier match → **HIGH**. Indica que `BancsOperationException` o `catch (Exception)` están siendo ruteados al builder `ERROR` en vez de `FATAL`/`buildBancsErrorResponse`.
 
 ```bash
-# El validador de header debe usar buildFatalResponse (no buildErrorResponse)
-grep -A3 "validationError.isPresent" <PATH>/src/main/java/com/pichincha/sp/infrastructure/input/adapter/soap/impl/*Controller.java \
+# El validador de header debe usar buildFatalResponse (no buildErrorResponse).
+# Usar -A8 porque el return queda ~5 líneas debajo del isPresent()
+# (comentario + log.warn con continuación de línea + return multilínea).
+grep -A8 "validationError.isPresent" <PATH>/src/main/java/com/pichincha/sp/infrastructure/input/adapter/soap/impl/*Controller.java \
   | grep -cE "buildFatalResponse"
 ```
 
@@ -472,10 +479,28 @@ Debe haber al menos:
 ### Check 6.2 — MapStruct en mappers
 
 ```bash
-grep -rn "@Mapper" <PATH>/src/main/java/com/pichincha/sp/infrastructure/*/mapper/
+# Total mappers
+find <PATH>/src/main/java -name "*Mapper.java" -path "*/mapper/*" | wc -l
+# Cuántos usan @Mapper
+grep -rl "@Mapper" <PATH>/src/main/java/**/mapper/ | wc -l
 ```
 
-0 matches → **MEDIUM**. Ideal usar MapStruct (o justificar por qué no).
+**Reglas:**
+- 0 mappers con `@Mapper` → **MEDIUM**. Ideal usar MapStruct.
+- ≥ 1 mapper con `@Mapper` y el resto manuales → **PASS** si los manuales tienen Javadoc que justifica por qué (ej: transformación uniforme `nullSafeValue` de N campos String→String). **MEDIUM** si no documentan.
+- 100% manuales → **MEDIUM** — aunque sean simples, conviene al menos tener MapStruct en el mapper BANCS→domain (response mapping).
+
+**Regla de oro:** MapStruct aporta valor cuando hay mapping con **nombres distintos** o **tipos distintos** o **lógica de transformación no trivial**. Cuando es 1-a-1 con una sola función uniforme (ej: `nullSafe`), MapStruct oscurece más de lo que ayuda — documentar la decisión en el Javadoc del mapper.
+
+**Verificación documentación:**
+```bash
+# Cada mapper manual debe tener Javadoc que mencione "MapStruct" o "@Mapper"
+for f in $(find <PATH>/src/main/java -name "*Mapper.java" -path "*/mapper/*"); do
+  if ! grep -q "@Mapper" "$f"; then
+    grep -l "MapStruct\|@Mapper" "$f" || echo "UNDOCUMENTED: $f"
+  fi
+done
+```
 
 ### Check 6.3 — Sin `new Record(>=8 args)` inline en services [FB-JG]
 
@@ -692,10 +717,16 @@ Si `projectType != SOAP`, saltar este bloque.
 ### Check 10.1 — Tests de integración usan PascalCase en XML
 
 ```bash
-grep -rnE "<[a-z].*01\b" <PATH>/src/test/java/ | grep -i "consultar\|crear\|eliminar"
+# Detecta elementos XML con nombre en minúscula (ej: <consultarAlgo01>) excluyendo
+# prefijos namespace legítimos (<ns:..., <ns1:..., <ns2:..., <soap:..., <xsi:...).
+grep -rnE "<[a-z]+[A-Z][a-zA-Z]*[0-9]{2}\b" <PATH>/src/test/java/ \
+  | grep -v -E "<[a-z]+[0-9]*:|local-name=" \
+  | grep -iE "consultar|crear|eliminar|actualizar|modificar"
 ```
 
 XML requests/responses con elemento raíz en minúscula → **HIGH**.
+
+**Falso positivo a filtrar:** `<ns:ConsultarX01>` es **válido** (el PascalCase está después del prefijo). El grep con `-v "<[a-z]+[0-9]*:"` filtra cualquier elemento con prefijo namespace.
 
 ### Check 10.2 — `@PayloadRoot.localPart` = PascalCase (ya en Bloque 3.2)
 
