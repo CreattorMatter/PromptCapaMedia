@@ -1,0 +1,62 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "Bash(./gradlew *)",
+      "Bash(gradle *)",
+      "Bash(java -version)",
+      "Bash(docker build *)",
+      "Bash(docker run *)",
+      "Bash(curl *)",
+      "Bash(find *)",
+      "Bash(wc *)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(cat *)",
+      "Bash(unzip *)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git branch*)",
+      "Edit(*)",
+      "Write(*)",
+      "Agent(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "TaskCreate(*)",
+      "TaskUpdate(*)",
+      "TaskList(*)",
+      "Skill(*)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(git push *)",
+      "Bash(git reset --hard*)",
+      "Bash(git checkout -- *)",
+      "Bash(git clean -f*)",
+      "Edit(.env)",
+      "Edit(*credentials*)",
+      "Edit(*secret*)"
+    ]
+  },
+  "env": {
+    "JAVA_HOME": "",
+    "SPRING_PROFILES_ACTIVE": "test"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'File modified' > /dev/null"
+          }
+        ]
+      }
+    ]
+  }
+}

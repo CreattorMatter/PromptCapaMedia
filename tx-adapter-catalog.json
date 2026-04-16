@@ -1,0 +1,538 @@
+[
+  {
+    "tx": "064014",
+    "tipo": null,
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Productos y Servicios",
+    "tribu": "TRIBU PRODUCTOS",
+    "adaptador": "tpr-msa-ad-bnc-products-details"
+  },
+  {
+    "tx": "007070",
+    "tipo": "TX",
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Transferencias y giros",
+    "tribu": "CORES Y TRANSACCIONES",
+    "adaptador": "tct-msa-ad-bnc-payments-parameters"
+  },
+  {
+    "tx": "007071",
+    "tipo": "RX",
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Transferencias y giros",
+    "tribu": "CORES Y TRANSACCIONES",
+    "adaptador": "tct-msa-ad-bnc-payments-parameters"
+  },
+  {
+    "tx": "009600",
+    "tipo": null,
+    "dominio": "CANALES",
+    "capacidad": "Gestión de canales",
+    "tribu": "CANALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "031967",
+    "tipo": null,
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Productos y Servicios",
+    "tribu": "TRIBU PRODUCTOS",
+    "adaptador": "tpr-msa-ad-bnc-products-parameters"
+  },
+  {
+    "tx": "060430",
+    "tipo": null,
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Productos y Servicios",
+    "tribu": "TRIBU PRODUCTOS",
+    "adaptador": "tpr-msa-ad-bnc-products-relationship"
+  },
+  {
+    "tx": "060452",
+    "tipo": null,
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Productos y Servicios",
+    "tribu": "TRIBU PRODUCTOS",
+    "adaptador": "tpr-msa-ad-bnc-products-details"
+  },
+  {
+    "tx": "060480",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "060602",
+    "tipo": null,
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Productos y Servicios",
+    "tribu": "TRIBU PRODUCTOS",
+    "adaptador": "tpr-msa-ad-bnc-products-ownership"
+  },
+  {
+    "tx": "060665",
+    "tipo": null,
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Productos y Servicios",
+    "tribu": "TRIBU PRODUCTOS",
+    "adaptador": "tpr-msa-ad-bnc-products-parameters"
+  },
+  {
+    "tx": "061404",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-location"
+  },
+  {
+    "tx": "061406",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "062001",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Prospectos",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "062120",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-location"
+  },
+  {
+    "tx": "062123",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-location"
+  },
+  {
+    "tx": "062124",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-location"
+  },
+  {
+    "tx": "062130",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-location"
+  },
+  {
+    "tx": "067010",
+    "tipo": "RX",
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067050",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067101",
+    "tipo": "RX",
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067116",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067118",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067125",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067126",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067145",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067151",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067153",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067159",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067186",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-location"
+  },
+  {
+    "tx": "067196",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-economic"
+  },
+  {
+    "tx": "067210",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-reference"
+  },
+  {
+    "tx": "067211",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-reference"
+  },
+  {
+    "tx": "067212",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-reference"
+  },
+  {
+    "tx": "067213",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-reference"
+  },
+  {
+    "tx": "067214",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-reference"
+  },
+  {
+    "tx": "067215",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-reference"
+  },
+  {
+    "tx": "067216",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-reference"
+  },
+  {
+    "tx": "067217",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-reference"
+  },
+  {
+    "tx": "067218",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-reference"
+  },
+  {
+    "tx": "067225",
+    "tipo": "TX",
+    "dominio": "HABILITANTES DE PRODUCTOS Y SERVICIOS",
+    "capacidad": "Gestión de riesgo y cumplimiento",
+    "tribu": "TRIBU AREAS DE APOYO",
+    "adaptador": "taa-msa-ad-bnc-products-compliance"
+  },
+  {
+    "tx": "067228",
+    "tipo": "TX",
+    "dominio": "HABILITANTES DE PRODUCTOS Y SERVICIOS",
+    "capacidad": "Gestión de riesgo y cumplimiento",
+    "tribu": "TRIBU AREAS DE APOYO",
+    "adaptador": "taa-msa-ad-bnc-products-compliance"
+  },
+  {
+    "tx": "067510",
+    "tipo": null,
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "079006",
+    "tipo": null,
+    "dominio": "HABILITADORES EMPRESARIALES",
+    "capacidad": "Gestión de la información",
+    "tribu": "TRIBU INTEGRACIONES Y NUEVAS CAPACIDADES",
+    "adaptador": "tia-msa-ad-bnc-catalogs"
+  },
+  {
+    "tx": "000400",
+    "tipo": null,
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Productos y Servicios",
+    "tribu": "TRIBU PRODUCTOS",
+    "adaptador": "tpr-msa-ad-bnc-products-details"
+  },
+  {
+    "tx": "000503",
+    "tipo": null,
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Productos y Servicios",
+    "tribu": "TRIBU PRODUCTOS",
+    "adaptador": "tpr-msa-ad-bnc-products-parameters"
+  },
+  {
+    "tx": "007075",
+    "tipo": null,
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Productos y Servicios",
+    "tribu": "TRIBU PRODUCTOS",
+    "adaptador": "tpr-msa-ad-bnc-products-details"
+  },
+  {
+    "tx": "051059",
+    "tipo": null,
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Productos y Servicios",
+    "tribu": "TRIBU PRODUCTOS",
+    "adaptador": "tpr-msa-ad-bnc-products-details"
+  },
+  {
+    "tx": "060450",
+    "tipo": null,
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Productos y Servicios",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tpr-msa-ad-bnc-products-details"
+  },
+  {
+    "tx": "060453",
+    "tipo": null,
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Productos y Servicios",
+    "tribu": "TRIBU PRODUCTOS",
+    "adaptador": "tpr-msa-ad-bnc-products-details"
+  },
+  {
+    "tx": "060457",
+    "tipo": null,
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Productos y Servicios",
+    "tribu": "TRIBU PRODUCTOS",
+    "adaptador": "tpr-msa-ad-bnc-products-details"
+  },
+  {
+    "tx": "060605",
+    "tipo": null,
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Productos y Servicios",
+    "tribu": "TRIBU PRODUCTOS",
+    "adaptador": "tpr-msa-ad-bnc-products-ownership"
+  },
+  {
+    "tx": "067000",
+    "tipo": "RX",
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "079007",
+    "tipo": null,
+    "dominio": "PRODUCTOS",
+    "capacidad": "Gestión de Productos y Servicios",
+    "tribu": "TRIBU PRODUCTOS",
+    "adaptador": "tpr-msa-ad-bnc-products-parameters"
+  },
+  {
+    "tx": "067227",
+    "tipo": "RX",
+    "dominio": "HABILITANTES DE PRODUCTOS Y SERVICIOS",
+    "capacidad": "Gestión de riesgo y cumplimiento",
+    "tribu": "TRIBU AREAS DE APOYO",
+    "adaptador": "taa-msa-ad-bnc-products-compliance"
+  },
+  {
+    "tx": "067230",
+    "tipo": "RX",
+    "dominio": "HABILITANTES DE PRODUCTOS Y SERVICIOS",
+    "capacidad": "Gestión de riesgo y cumplimiento",
+    "tribu": "TRIBU AREAS DE APOYO",
+    "adaptador": "taa-msa-ad-bnc-products-compliance"
+  },
+  {
+    "tx": "062010",
+    "tipo": "RX",
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067100",
+    "tipo": "RX",
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067102",
+    "tipo": "RX",
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067103",
+    "tipo": "RX",
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067001",
+    "tipo": "RX",
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067108",
+    "tipo": "RX",
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067071",
+    "tipo": "RX",
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067155",
+    "tipo": "RX",
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067156",
+    "tipo": "RX",
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067127",
+    "tipo": "RX",
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067111",
+    "tipo": "RX",
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  },
+  {
+    "tx": "067219",
+    "tipo": "RX",
+    "dominio": "CLIENTES Y MARKETING",
+    "capacidad": "Gestión de Clientes",
+    "tribu": "TRIBU DE SEGMENTOS Y NEGOCIOS DIGITALES",
+    "adaptador": "tnd-msa-ad-bnc-customers-profile"
+  }
+]
