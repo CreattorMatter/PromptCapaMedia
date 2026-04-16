@@ -1,0 +1,50 @@
+<ERRORS>
+  <!-- Errores Servicio -->
+  <error codigo="9999" descripcion="Error al procesar el servicio." />
+  <error codigo="9998" descripcion="ESB-%2%" />
+  <error codigo="9997" descripcion="No se ha podido cargar el XML '%2%'" />
+  <error codigo="9996" descripcion="No se ha cargado los configuracion de ACLs correctamente." />
+  <error codigo="9995" descripcion="No se ha cargado los configuracion de errores correctamente." />
+  <error codigo="9994" descripcion="No se ha concedido acceso a la aplicacion" />
+  <error codigo="9993" descripcion="No se ha seleccionado un error valido." />
+  <error codigo="9992" descripcion="No se ha encontrado el Servicio Configurable %2%" />
+  <error codigo="9991" descripcion="Tiempo de respuesta del servicio expirado" />
+  <error codigo="9990" descripcion="Fecha Contable Bancs no se cargado" />
+  <!-- Errores MicroServicios -->
+  <error codigo="9989" descripcion="Error al procesar el MicroServicio." />
+  <error codigo="9988" descripcion="ESB-%2%." />
+  <error codigo="9987" descripcion="Error en el ruteo al MicroServicio." />
+  <!-- Errores Transaccion Distribuida-->
+  <error codigo="9979" descripcion="Error en el modulo de transaccionalidad." />
+  <error codigo="9978" descripcion="ESB-%2%." />
+  <!-- Errores Reverso-->
+  <error codigo="9969" descripcion="Error en el modulo de reverso." />
+  <error codigo="9968" descripcion="ESB-%2%." />
+  <!-- Errores SOAP-->
+  <error codigo="9959" descripcion="Error al procesar la peticion SOAP." />
+  <error codigo="9958" descripcion="ESB-%2%." />
+  <error codigo="9957" descripcion="SOAP-%2%." />
+  <!-- Errores MQ-->
+  <error codigo="9949" descripcion="Error en el modulo MQ." />
+  <error codigo="9948" descripcion="ESB-%2%." />
+  <error codigo="9947" descripcion="Tiempo de espera terminado sin respuesta" />
+  <!-- Errores Hash -->
+  <error codigo="9939" descripcion="No se ha podido crear el hash del objeto" />
+  <error codigo="9938" descripcion="Hash no concuerda con el registrado" />
+  <error codigo="9937" descripcion="Valores para crear hash vacios o invalidos" />
+  <error codigo="9936" descripcion="Combinacion de canal, medio y aplicacion no registrada para validar hash" />
+  <error codigo="9935" descripcion="Combinacion de canal, medio y aplicacion no registrada para generar hash" />
+  <!-- Errores Bancs -->
+  <error codigo="9929" descripcion="Error al invocar transaccion Bancs" />
+  <error codigo="9928" descripcion="ESB-%2%" />
+  <error codigo="9927" descripcion="Datos de la cabecera de la transaccion no se han asignado" />
+  <error codigo="9926" descripcion="No se ha podido cargar el XML de definicion %2%" />
+  <error codigo="9925" descripcion="Estructura del XML de definicion %2% desconocida" />
+  <error codigo="9924" descripcion="Formato Cobol desconocido, no se puede interpretar" />
+  <error codigo="9923" descripcion="Longitud de %2% de TX no concuerda con la definicion" />
+  <error codigo="9922" descripcion="No se ha podido interpretar la respuesta de Bancs" />
+  <error codigo="9921" descripcion="No se ha encontrado la TX de reverso en el diccionario" />
+  <error codigo="9920" descripcion="Tiempo de espera terminado sin respuesta" />
+  <!-- Otros errores -->
+  <error codigo="9919" descripcion="Tipo de transaccion no encontrado, no se puede asignar un concepto a la transaccion" />
+</ERRORS>

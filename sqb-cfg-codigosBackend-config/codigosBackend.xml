@@ -1,0 +1,26 @@
+<BACKEND>
+  <backcode id="00588" aplicacion="verifier" descripcion="VERIFIER (Delay)" />
+  <backcode id="00587" aplicacion="notifier" descripcion="NOTIFIER (OTP)" />
+  <backcode id="00429" aplicacion="siglo_bdd" descripcion="SIGLO_21 (SAR y Relogeo)" />
+  <backcode id="00493" aplicacion="totem" descripcion="Switch Totem" />
+  <backcode id="00632" aplicacion="wso2" descripcion="Federador de Identidades (WSO2)" />
+  <backcode id="00633" aplicacion="was" descripcion="Middleware Integracion Tecnico (WAS)" />
+  <backcode id="00634" aplicacion="omni_bdd" descripcion="Base de Datos Omnicanal" />
+  <backcode id="00635" aplicacion="odm" descripcion="Motor de Reglas (ODM)" />
+  <backcode id="00636" aplicacion="msg" descripcion="Notificador MSG" />
+  <backcode id="00647" aplicacion="cxp" descripcion="Banca Electronica Personas (CXP)" />
+  <backcode id="00329" aplicacion="pagos_pichincha" descripcion="PagosPichincha" />
+  <backcode id="00270" aplicacion="internexo" descripcion="Internexo Personas" />
+  <backcode id="00335" aplicacion="pichincha_celular" descripcion="Pichincha Celular" />
+  <backcode id="00638" aplicacion="iib" descripcion="Middleware Integracion (IIB)" />
+  <backcode id="00639" aplicacion="mqgateway" descripcion="Gestor de Colas (MQ Gateway)" />
+  <backcode id="00640" aplicacion="datapower" descripcion="Federador de Middleware (DataPower)" />
+  <backcode id="00641" aplicacion="motor_pagos" descripcion="Motor de Pagos y Recaudaciones" />
+  <backcode id="00642" aplicacion="motor_homlogacion" descripcion="Motor de Homologacion" />
+  <backcode id="00045" aplicacion="bancs_app" descripcion="Core Bancario (BANCS)" />
+  <backcode id="00644" aplicacion="autorizadores_bdd" descripcion="Base de Datos Autorizadores" />
+  <backcode id="00646" aplicacion="interdin" descripcion="Interdin" />
+  <backcode id="00473" aplicacion="netMaganer" descripcion="Switch NET Manager" />
+  <backcode id="00614" aplicacion="spi" descripcion="Sistema Nacional de Pagos" />
+  <backcode id="00337" aplicacion="yp" descripcion="Yellow Pepper Web Service" />
+</BACKEND>
