@@ -272,6 +272,32 @@ grep -rn "HeaderRequestValidator\." <PATH>/src/main/java/com/pichincha/sp/infras
 
 Body validations (ej: CIF vacío, identificación inválida) **SÍ van en application/service** con `BusinessValidationException`. Este check es informativo — no es violación.
 
+### Check 4.5 — HeaderRequestValidator rechaza header null y bloque `<bancs>` faltante [Rule 9b]
+
+```bash
+grep -A6 "public static Optional<String> validate" \
+    <PATH>/src/main/java/com/pichincha/sp/infrastructure/input/adapter/soap/util/HeaderRequestValidator.java \
+  | grep -cE "header == null|getBancs\(\) == null"
+```
+
+- 0 matches → **HIGH**. El servicio permite header null o sin `<bancs>`, lo que provoca `NullPointerException` en el Core Adapter o headers corporativas vacías hacia Bancs.
+- 1 match (solo `header == null`) → **HIGH**. Falta validar `getBancs() == null`.
+- 2 matches ✓ PASS.
+
+**Mensaje requerido (canónico del catálogo `sqb-cfg-errores-errors`, error 9927):**
+```
+"Datos de la cabecera de la transaccion no se han asignado"
+```
+
+```bash
+grep -c "Datos de la cabecera de la transaccion no se han asignado" \
+    <PATH>/src/main/java/com/pichincha/sp/infrastructure/input/adapter/soap/util/HeaderRequestValidator.java
+```
+- 0 matches → **MEDIUM** (mensaje custom en vez del canónico).
+- ≥ 2 matches ✓ PASS.
+
+**Referencia:** wsclientes0007 post-fix 2026-04-16 (commit `bbcc62a` de Kevin Armas).
+
 ---
 
 ## BLOQUE 5 — Error handling y propagación de errores Bancs
@@ -319,13 +345,111 @@ grep -rn "SoapFaultException\|MessageFaultException\|throw.*SoapFault" <PATH>/sr
 
 Cualquier match → **HIGH**. Errores se devuelven como response válido con `tipo='ERROR'`, nunca como SOAP fault (compatibilidad IIB).
 
-### Check 5.4 — BusinessValidationException en domain
+### Check 5.4 — `error.backend` viene del catálogo oficial, no hardcodeado [FB-JG]
+
+```bash
+# Buscar constantes hardcodeadas que setean error.backend
+grep -rnE "BACKEND_CODE\s*=\s*\"00000\"|setBackend\(\"[^\"]+\"\)" <PATH>/src/main/java/
+# Buscar que exista la configuración
+grep -E "error-codes:|iib:|bancs-app:" <PATH>/src/main/resources/application*.yml
+```
+
+**Origen:** UMP legacy leía `Environment.cache.codigosBackend.iib` y `.bancs_app` del cache del IIB (poblado por el repo oficial `sqb-cfg-codigosBackend-config/codigosBackend.xml`).
+
+**Catálogo oficial del banco:**
+- `iib` = `"00638"` — Middleware Integracion (IIB), usado en success y BusinessValidationException
+- `bancs_app` = `"00045"` — Core Bancario (BANCS), usado en BancsOperationException
+
+**Violaciones:**
+- `BACKEND_CODE = "00000"` hardcodeado en un `*Constants.java` → **HIGH**. `"00000"` no corresponde a ningún backend real del banco.
+- `setBackend("")` o `setBackend("00000")` literal en el helper/controller → **HIGH**.
+- No existe sección `bancs.error-codes` en `application.yml` → **HIGH**.
+- Existe sección pero sin variable ENV (`${CCC_...}`) que permita override por entorno → **MEDIUM**.
+
+**Patrón correcto (ver 0007 post-fix):**
+```java
+// application.yml
+bancs:
+  error-codes:
+    iib: ${CCC_BANCS_ERROR_CODE_IIB:00638}
+    bancs-app: ${CCC_BANCS_ERROR_CODE_BANCS_APP:00045}
+
+// BancsErrorCodesProperties.java
+@ConfigurationProperties(prefix = "bancs.error-codes")
+public record BancsErrorCodesProperties(String iib, String bancsApp) {}
+
+// SoapResponseHelper.java — constructor inyecta props
+// buildSuccessResponse → backendCodes.iib()
+// buildErrorResponse   → backendCodes.iib()  (BusinessValidationException)
+// buildBancsErrorResponse → backendCodes.bancsApp()  (BancsOperationException)
+```
+
+**Referencia:** wsclientes0024/0013/0006 (golds) todos tienen el bug `"00000"` — **no replicar**. wsclientes0007 lo corrigió post-auditoría 2026-04-16.
+
+### Check 5.5 — BusinessValidationException en domain
 
 ```bash
 grep -l "BusinessValidationException" <PATH>/src/main/java/com/pichincha/sp/domain/exception/
 ```
 
 0 matches → **HIGH**. Debe existir en `domain/exception/`.
+
+### Check 5.6 — `error.tipo` sigue la clasificación INFO/ERROR/FATAL [Rule 9d]
+
+**Reglas del legacy IIB (ver `reference_error_types.md` en memoria):**
+
+| Tipo | Cuándo | Ejemplo |
+|---|---|---|
+| `INFO` | Success o resultado esperado sin datos | flujo OK |
+| `ERROR` | Validación de negocio recuperable por caller | `BusinessValidationException` (CIF vacío, identificación inválida) |
+| `FATAL` | Falla técnica/infra no recuperable | header faltante, `BancsOperationException`, Exception genérica |
+
+**Check 5.6.1 — Constante `ERROR_TYPE_FATAL` existe**
+
+```bash
+grep -E 'ERROR_TYPE_FATAL\s*=\s*"FATAL"' \
+    <PATH>/src/main/java/com/pichincha/sp/infrastructure/exception/CatalogExceptionConstants.java
+```
+
+0 matches → **HIGH**. Sin la constante no puede cumplirse el mapeo completo.
+
+**Check 5.6.2 — El Helper expone los 3 builders diferenciados**
+
+```bash
+grep -cE "public .* buildSuccessResponse|public .* buildErrorResponse|public .* buildFatalResponse|public .* buildBancsErrorResponse" \
+    <PATH>/src/main/java/com/pichincha/sp/infrastructure/input/adapter/soap/helper/SoapResponseHelper.java
+```
+
+< 4 matches → **HIGH**. Faltan builders; ver patrón en sección 4.5 del prompt SOAP.
+
+**Check 5.6.3 — El Controller mapea cada rama al builder correcto**
+
+```bash
+# BancsOperationException debe ir a buildBancsErrorResponse, NO a buildErrorResponse
+grep -B2 "buildErrorResponse" <PATH>/src/main/java/com/pichincha/sp/infrastructure/input/adapter/soap/impl/*Controller.java \
+  | grep -E "BancsOperationException|catch \(Exception"
+```
+
+Cualquier match → **HIGH**. Indica que `BancsOperationException` o `catch (Exception)` están siendo ruteados al builder `ERROR` en vez de `FATAL`/`buildBancsErrorResponse`.
+
+```bash
+# El validador de header debe usar buildFatalResponse (no buildErrorResponse)
+grep -A3 "validationError.isPresent" <PATH>/src/main/java/com/pichincha/sp/infrastructure/input/adapter/soap/impl/*Controller.java \
+  | grep -cE "buildFatalResponse"
+```
+
+0 matches → **HIGH**. Header-faltante debe ser tipo=FATAL (es falla técnica, caller no puede corregirlo sin enviar el bloque bancs).
+
+**Check 5.6.4 — Tests asertan `tipo` explícitamente**
+
+```bash
+grep -cE 'assertEquals\("(INFO|ERROR|FATAL)",.*getTipo' \
+    <PATH>/src/test/java/com/pichincha/sp/infrastructure/input/adapter/soap/**/*.java
+```
+
+< 4 matches → **MEDIUM**. Cada rama del Controller debe tener al menos un test que asierte el `tipo` (success=INFO, business=ERROR, bancs=FATAL, unexpected=FATAL).
+
+**Referencia:** wsclientes0007 post-fix 2026-04-16 (tipo FATAL para header-missing + Bancs + Exception genérica). Los golds 0024/0013/0006 NO aplican esta clasificación — **no replicar**.
 
 ---
 

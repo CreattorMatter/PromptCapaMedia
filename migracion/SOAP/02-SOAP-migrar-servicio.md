@@ -190,36 +190,138 @@ return bancsClient.call(request, responseType).block();
 
 ### Header Validation -- Bancs Block (Rule 9b)
 
-**Rule 9b -- Validate that `<bancs>` block exists in `<headerIn>` BEFORE calling any BANCS TX.**
+**Rule 9b -- Validate that `<headerIn>` exists and that the `<bancs>` block inside is present BEFORE calling any BANCS TX.**
 
-When the SOAP request does not include the `<bancs>` block inside `<headerIn>`, the service MUST NOT call the Core Adapter. Instead, return HTTP 200 with the following error structure:
+Without header o sin el bloque `<bancs>`, la respuesta SOAP DEBE salir con HTTP 200 + `tipo=FATAL` + el mensaje canónico del catálogo oficial [`sqb-cfg-errores-errors/errores.xml`](https://dev.azure.com/BancoPichinchaEC/tpl-integrationbus-config/_git/sqb-cfg-errores-errors) (código 9927: *"Datos de la cabecera de la transaccion no se han asignado"*).
 
 ```xml
 <error>
-  <codigo>005</codigo>
-  <mensaje>El bloque bancs es requerido en la cabecera</mensaje>
-  <tipo>ERROR</tipo>
+  <codigo>1</codigo>
+  <mensaje>Datos de la cabecera de la transaccion no se han asignado</mensaje>
+  <tipo>FATAL</tipo>
   <recurso>WSClientes{NNNN}/OperationName</recurso>
-  <componente>WSClientes{NNNN}</componente>
-  <backend/>
+  <componente>OperationName</componente>
+  <backend>00638</backend>    <!-- IIB: el error se detecta en middleware ANTES de llegar a Bancs -->
 </error>
 ```
 
-**Why:** Without the `<bancs>` block, the Core Adapter cannot build the required corporate headers (`x-app`, `x-guid`, `x-channel`, `x-medium`, `x-session`). If the request passes through without validation, the Core Adapter returns HTTP 500 with `BancsIntegrationException` -- exposing internal infrastructure details in the error message.
+**Why `FATAL` y no `ERROR`:** sin el `<bancs>` el Core Adapter no puede construir las headers corporativas (`x-app`, `x-guid`, `x-channel`, `x-medium`, `x-session`). Es **falla técnica no recuperable por el caller** — no puede reintentar con los mismos datos. Por eso aplica la semántica FATAL de Rule 9d (ver abajo).
 
-**Implementation:**
-- In the SOAP controller or service layer, check if `headerIn.getBancs() == null` BEFORE any business logic
-- If null, throw a typed exception (e.g., `MissingBancsHeaderException`) or return the error directly
-- This validation runs BEFORE `validateRequest()` (identification validation) -- it is the FIRST check
-- The error code `005` and message `El bloque bancs es requerido en la cabecera` are fixed -- adapt only `recurso` and `componente` per service
+**Implementation canónica (evidencia en wsclientes0007 post-fix):**
 
-**Test case to add:**
 ```java
-@Test
-void consultarContacto_deberiaRetornarError005_cuandoBancsHeaderAusente() {
-  // headerIn without <bancs> block -> error codigo=005
+// infrastructure/input/adapter/soap/util/HeaderRequestValidator.java
+public static Optional<String> validate(GenericHeaderIn header) {
+  if (header == null) {
+    return Optional.of(
+        "Datos de la cabecera de la transaccion no se han asignado");
+  }
+  if (header.getBancs() == null) {
+    return Optional.of(
+        "Datos de la cabecera de la transaccion no se han asignado");
+  }
+  return checkField(header.getDispositivo(), 50, DEVICE_PATTERN, "dispositivo")
+      .or(() -> checkField(header.getEmpresa(), 5, ALPHANUMERIC, "empresa"))
+      // ...resto de validaciones de campo
+      ;
 }
 ```
+
+```java
+// WSClientes{NNNN}Controller.java — en el bloque try inicial
+Optional<String> validationError = HeaderRequestValidator.validate(headerIn);
+if (validationError.isPresent()) {
+  return soapResponseHelper.buildFatalResponse(       // ← FATAL, no ERROR
+      ctx, "1", validationError.get());
+}
+```
+
+**Test cases obligatorios:**
+```java
+@Test
+void givenNullHeader_whenValidate_thenReturnsHeaderNotAssignedError() { ... }
+
+@Test
+void givenHeaderWithoutBancs_whenValidate_thenReturnsHeaderNotAssignedError() { ... }
+
+@Test
+void givenMissingBancsHeader_whenConsultar_thenReturnsFatal() {
+  soapRequest.getHeaderIn().setBancs(null);
+  var response = controller.<operacion>(soapRequest);
+  assertEquals("FATAL", response.getError().getTipo());
+  assertEquals("00638", response.getError().getBackend());  // IIB
+}
+```
+
+### Error Type Classification (Rule 9d)
+
+**Rule 9d -- El campo `error.tipo` sigue EXACTAMENTE esta clasificación. No inventar valores ni mezclar.**
+
+| Tipo | Cuándo | Backend | Ejemplos |
+|---|---|---|---|
+| `INFO` | Éxito (codigo='0', mensaje='OK'), o resultado esperado sin datos (ej: "no se encontró información del cliente" como caso de negocio) | IIB (`00638`) | Success flow, `CustomerContactResult` con contactos vacíos pero legítimos |
+| `ERROR` | Validación de negocio **recuperable por el caller** — input inválido que el caller puede corregir y reintentar | IIB (`00638`) | `BusinessValidationException` (CIF vacío, identificación mal formada, tipo de documento inválido) |
+| `FATAL` | Falla técnica / infraestructura **no recuperable por el caller** — el mismo request fallaría otra vez | IIB o BANCS según origen | Header o bloque `<bancs>` faltante, `BancsOperationException` (TX Bancs falló, timeout, circuit open), `Exception` genérica del catch-all |
+
+**Mapeo de excepciones al `tipo` correcto:**
+
+| Rama del Controller | Builder a usar | tipo |
+|---|---|---|
+| Success (return normal del service) | `buildSuccessResponse(ctx, result)` | INFO |
+| `HeaderRequestValidator.validate(...).isPresent()` | `buildFatalResponse(ctx, "1", msg)` | FATAL |
+| `catch (BusinessValidationException e)` | `buildErrorResponse(ctx, code, msg)` | ERROR |
+| `catch (BancsOperationException e)` | `buildBancsErrorResponse(ctx, code, msg, txId)` | FATAL |
+| `catch (Exception e)` (catch-all) | `buildFatalResponse(ctx, "999", "Error interno del servicio")` | FATAL |
+
+**Origen legacy:** esta convención viene de los ESQL del broker IIB. Evidencia:
+- [`0078/legacy/.../consultarClienteSAR.esql:51`](../../0078/legacy/_repo/com/bpichincha/esb/wsclientes0078/consultarClienteSAR.esql) — `SET error.tipo = 'ERROR'` para validación de input
+- [`0010-WSR/.../ConsultarSeguridadNoFinanciero01.esql:585`](../../0010-WSR/legacy/_repo/com/bpichincha/esb/wsreglas0010/ConsultarSeguridadNoFinanciero01.esql:585) — `SET error.tipo = 'INFO'` para success
+- [`0010-WSR/ANALISIS_WSReglas0010.md:432`](../../0010-WSR/ANALISIS_WSReglas0010.md:432) — SOAP Fault / excepción IIB → `tipo='FATAL'`, triggerea contingencia
+
+**Violación común del gold standard:** los golds 0024/0013/0006 mezclan ERROR y FATAL o no distinguen. wsclientes0007 post-fix 2026-04-16 es el primero que aplica esta clasificación correctamente.
+
+**Validación rápida:**
+```bash
+# El Controller debe usar los 3 builders diferenciados
+grep -cE "buildFatalResponse|buildErrorResponse|buildBancsErrorResponse" \
+    src/main/java/**/Controller.java
+# Debe ser ≥ 3 (uno por cada rama de excepción)
+
+# No debe haber llamadas a buildErrorResponse en rama BancsOperationException ni Exception
+grep -B2 "buildErrorResponse" src/main/java/**/Controller.java | \
+    grep -E "BancsOperationException|catch \(Exception"
+# Expected: empty
+```
+
+### Backend Codes for `error.backend` (Rule 9c)
+
+**Rule 9c -- NEVER hardcode `error.backend` as `"00000"` or empty string.** El campo `error.backend` de la respuesta SOAP debe venir del catálogo oficial del banco ([`sqb-cfg-codigosBackend-config/codigosBackend.xml`](https://dev.azure.com/BancoPichinchaEC/tpl-integrationbus-config/_git/sqb-cfg-codigosBackend-config)), inyectado vía `BancsErrorCodesProperties` como `@ConfigurationProperties`.
+
+**Origen:** UMP legacy usaba `Environment.cache.codigosBackend.iib` (IIB) o `.bancs_app` (BANCS) para poblar este campo, distinguiendo qué componente originó el error. Los gold standards (0024, 0013, 0006) tienen el bug de usar `"00000"` literal — **no replicar**.
+
+**Valores oficiales (del catálogo):**
+
+| Caso | Código `error.backend` | Clave en config |
+|---|---|---|
+| `buildSuccessResponse` (flujo OK) | `"00638"` (IIB) | `bancs.error-codes.iib` |
+| `buildErrorResponse` / `BusinessValidationException` (validaciones de negocio detectadas en middleware) | `"00638"` (IIB) | `bancs.error-codes.iib` |
+| `buildBancsErrorResponse` / `BancsOperationException` (TX Bancs falló) | `"00045"` (BANCS) | `bancs.error-codes.bancs-app` |
+
+**Patrón obligatorio (ver secciones 4.5, 4.10, 4.11 abajo):**
+1. Clase `BancsErrorCodesProperties` como `@ConfigurationProperties("bancs.error-codes")` con campos `iib` y `bancsApp`.
+2. Sección `bancs.error-codes` en `application.yml` con defaults `00638` y `00045` y override vía `${CCC_BANCS_ERROR_CODE_IIB}` / `${CCC_BANCS_ERROR_CODE_BANCS_APP}`.
+3. `SoapResponseHelper` es `@Component` con constructor que recibe `BancsErrorCodesProperties`. Cada builder elige el código según el caso de error.
+4. `CatalogExceptionConstants` **NO** tiene una constante `BACKEND_CODE`.
+
+**Verificación rápida:**
+```bash
+# Debe retornar 0 matches
+grep -rE "BACKEND_CODE\s*=\s*\"00000\"|setBackend\(\"00000\"\)|setBackend\(\"\"\)" src/main/java/
+# Debe retornar matches
+grep -E "error-codes:|bancs-app:|iib:" src/main/resources/application*.yml
+```
+
+Si tu servicio consume otros backends además de IIB y BANCS (ej: DataPower 00640, WSO2 00632, WAS 00633), ampliar el record con más campos y documentarlo.
 
 ### Security and Configuration (Rules 10-13)
 
@@ -1330,18 +1432,126 @@ You still need JAXB-generated types (produced by the CXF `generateJavaFromWsdl` 
 
 #### 4.5 SoapResponseHelper
 
+**MUST be `@Component`** (not `@UtilityClass`) porque necesita inyectar `BancsErrorCodesProperties` vía constructor para cumplir la **Rule 9c**. Cada builder elige el código `backend` según el origen del error — IIB para éxito y validaciones de middleware, BANCS para errores de TX.
+
 ```java
-@UtilityClass
+@Component
 public class SoapResponseHelper {
-  public static GenericHeaderOut buildHeaderOut(GenericHeaderIn headerIn) {
-    // Copy all fields from headerIn to headerOut
-    // Handle headerIn == null (return empty headerOut)
+
+  private final BancsErrorCodesProperties backendCodes;
+
+  public SoapResponseHelper(BancsErrorCodesProperties backendCodes) {
+    this.backendCodes = backendCodes;
   }
 
-  public static GenericError buildGenericError(
-      String codigo, String mensaje, String mensajeNegocio, String tipo) {
-    // Create GenericError with service fields pre-loaded from constants
+  /** Éxito de negocio — error.backend = IIB (00638). */
+  public <Operacion>Response buildSuccessResponse(
+      HeaderRequestModel ctx, <DomainResult> result) {
+    <Operacion>Response response = new <Operacion>Response();
+    response.setHeaderOut(buildHeaderOut(ctx));
+    response.setBodyOut(buildBodyOut(result));
+    response.setError(buildError(
+        result.errorCode(), result.errorMessage(),
+        CatalogExceptionConstants.ERROR_TYPE_INFO,
+        backendCodes.iib()));
+    return response;
   }
+
+  /**
+   * Validación de negocio recuperable — tipo=ERROR, backend=IIB (00638).
+   * Usar para BusinessValidationException (input inválido que el caller puede corregir).
+   */
+  public <Operacion>Response buildErrorResponse(
+      HeaderRequestModel ctx, String code, String message) {
+    <Operacion>Response response = new <Operacion>Response();
+    response.setHeaderOut(buildHeaderOut(ctx));
+    response.setError(buildError(code, message,
+        CatalogExceptionConstants.ERROR_TYPE_ERROR,
+        backendCodes.iib()));
+    return response;
+  }
+
+  /**
+   * Falla técnica detectada en middleware — tipo=FATAL, backend=IIB (00638).
+   * Usar para: header inválido o &lt;bancs&gt; faltante (Rule 9b), catch-all Exception genérica.
+   */
+  public <Operacion>Response buildFatalResponse(
+      HeaderRequestModel ctx, String code, String message) {
+    <Operacion>Response response = new <Operacion>Response();
+    response.setHeaderOut(buildHeaderOut(ctx));
+    response.setError(buildError(code, message,
+        CatalogExceptionConstants.ERROR_TYPE_FATAL,
+        backendCodes.iib()));
+    return response;
+  }
+
+  /**
+   * Error proveniente de TX Bancs — tipo=FATAL, backend=BANCS (00045).
+   * El campo `componente` lleva el TX code que falló (ej: "060480").
+   * Usar para BancsOperationException.
+   */
+  public <Operacion>Response buildBancsErrorResponse(
+      HeaderRequestModel ctx, String code, String message,
+      String component) {
+    <Operacion>Response response = new <Operacion>Response();
+    response.setHeaderOut(buildHeaderOut(ctx));
+    GenericError error = buildError(code, message,
+        CatalogExceptionConstants.ERROR_TYPE_FATAL,
+        backendCodes.bancsApp());
+    error.setComponente(nullSafe(component));
+    response.setError(error);
+    return response;
+  }
+
+  private GenericError buildError(
+      String code, String message, String tipo, String backendCode) {
+    GenericError error = new GenericError();
+    error.setCodigo(nullSafe(code));
+    error.setMensaje(nullSafe(message));
+    error.setMensajeNegocio("");
+    error.setTipo(tipo);
+    error.setRecurso(CatalogExceptionConstants.WS_RECURSO);
+    error.setComponente(CatalogExceptionConstants.WS_COMPONENTE);
+    error.setBackend(nullSafe(backendCode));
+    return error;
+  }
+
+  private GenericHeaderOut buildHeaderOut(HeaderRequestModel ctx) {
+    // Copy all fields from ctx to headerOut.
+    // Handle ctx == null -> return empty headerOut with all fields as "".
+  }
+
+  private String nullSafe(String v) { return v == null ? "" : v; }
+}
+```
+
+**Key design decisions:**
+- `@Component` (no `@UtilityClass`) para permitir inyección de `BancsErrorCodesProperties`.
+- **NO** leer `CatalogExceptionConstants.BACKEND_CODE` — esa constante ya no existe (ver 4.8).
+- `buildBancsErrorResponse` **no recibe** parámetro `backend`; lo resuelve internamente vía `props.bancsApp()`.
+- Si el servicio consume más backends (DataPower, WAS, etc.), ampliar `BancsErrorCodesProperties` y agregar los builders correspondientes.
+
+**Test pattern:**
+```java
+private SoapResponseHelper helper;
+
+@BeforeEach
+void setUp() {
+  helper = new SoapResponseHelper(
+      new BancsErrorCodesProperties("00638", "00045"));
+}
+
+@Test
+void givenSuccess_whenBuild_thenBackendIsIib() {
+  var response = helper.buildSuccessResponse(ctx, result);
+  assertEquals("00638", response.getError().getBackend());
+}
+
+@Test
+void givenBancsError_whenBuild_thenBackendIsBancsApp() {
+  var response = helper.buildBancsErrorResponse(ctx, "500", "Fail", "TX060480");
+  assertEquals("00045", response.getError().getBackend());
+  assertEquals("TX060480", response.getError().getComponente());
 }
 ```
 
@@ -1534,7 +1744,10 @@ public class CatalogExceptionConstants {
   // Adjust per service
   public static final String WS_RECURSO = "<NombreServicio>/<Operacion>";
   public static final String WS_COMPONENTE = "<Operacion>";
-  public static final String BACKEND_CODE = "00000";
+
+  // NOTA: NO declarar BACKEND_CODE acá. Los códigos de error.backend
+  // (IIB=00638, BANCS=00045) se leen de BancsErrorCodesProperties
+  // vía application.yml. Ver Rule 9c y sección 4.5.
 
   public static final String SUCCESS_CODE = "0";
   public static final String ERROR_CODE_GENERIC = "999";
@@ -1559,19 +1772,48 @@ In SOAP mode, errors are NOT handled via `ErrorResolverHandler` or `ErrorWebExce
 @ResponsePayload
 @BpTraceable
 public <Operacion>Response <operacion>(@RequestPayload <Operacion> request) {
+  HeaderRequestModel ctx = mapper.toHeaderRequestModel(request);
   try {
-    // Extract headerIn, validate bancs block (Rule 9b)
-    // Map to domain, call service, build success response
-    return buildSuccessResponse(headerOut, bodyOut);
+    // Rule 9b — validar header + bloque <bancs>
+    GenericHeaderIn headerIn = request == null ? null : request.getHeaderIn();
+    Optional<String> validationError =
+        HeaderRequestValidator.validate(headerIn);
+    if (validationError.isPresent()) {
+      // tipo=FATAL, backend=IIB (error técnico: sin header no podemos llamar a Bancs)
+      return soapResponseHelper.buildFatalResponse(
+          ctx, "1", validationError.get());
+    }
+    // Business logic
+    return soapResponseHelper.buildSuccessResponse(ctx, result);   // tipo=INFO, backend=IIB
   } catch (BusinessValidationException e) {
-    return buildErrorResponse(headerOut, e.getErrorCode(), e.getErrorMessage());
+    // tipo=ERROR, backend=IIB (validación de negocio recuperable)
+    return soapResponseHelper.buildErrorResponse(
+        ctx, e.getErrorCode(), e.getErrorMessage());
   } catch (BancsOperationException e) {
-    return buildErrorResponse(headerOut, e.getErrorCode(), e.getErrorMessage());
+    // tipo=FATAL, backend=BANCS (TX Bancs falló; componente = TX code)
+    return soapResponseHelper.buildBancsErrorResponse(
+        ctx, e.getErrorCode(), e.getErrorMessage(), e.getTransactionId());
   } catch (Exception e) {
-    return buildErrorResponse(headerOut, "999", "Error interno del servicio");
+    // tipo=FATAL, backend=IIB (catch-all técnico)
+    return soapResponseHelper.buildFatalResponse(
+        ctx, "999", "Error interno del servicio");
   }
 }
 ```
+
+**IMPORTANT -- Rules 9b / 9c / 9d aplicadas simultáneamente:**
+
+| Rama | Builder | `tipo` | `backend` | Origen |
+|---|---|---|---|---|
+| Success | `buildSuccessResponse` | INFO | IIB `00638` | Rule 9d + 9c |
+| Header/bancs faltante (Rule 9b) | `buildFatalResponse` | FATAL | IIB `00638` | Falla técnica detectada en middleware |
+| `BusinessValidationException` | `buildErrorResponse` | ERROR | IIB `00638` | Validación de negocio recuperable |
+| `BancsOperationException` | `buildBancsErrorResponse` | FATAL | BANCS `00045` | TX Bancs falló (propaga transactionId como componente) |
+| `catch (Exception e)` | `buildFatalResponse` | FATAL | IIB `00638` | Catch-all técnico, error no manejado |
+
+- El Controller **NO pasa** `tipo` ni `backend` como parámetros — cada builder del helper los resuelve internamente según Rule 9c (backend) y Rule 9d (tipo).
+- **Nunca** usar `buildErrorResponse` para `BancsOperationException` ni para el catch-all genérico — rompe Rule 9d (FATAL vs ERROR).
+- El mensaje `"Datos de la cabecera de la transaccion no se han asignado"` del header-faltante es el texto canónico del error `9927` en el catálogo oficial `sqb-cfg-errores-errors/errores.xml`.
 
 **Key difference from REST:** SOAP services do NOT use `ErrorResolverHandler`, `ErrorWebExceptionHandler`, or `ErrorResolver<T>`. The `@Endpoint` catches all exceptions and wraps them in valid SOAP response bodies. No SOAP faults are returned.
 
@@ -1590,6 +1832,22 @@ public class CustomerPropertiesConfig implements CustomerConfigOutputPort {
 }
 ```
 
+**MANDATORY: `BancsErrorCodesProperties`** — todos los servicios deben declarar esta clase (Rule 9c). Usa `record` porque los valores son inmutables y la `relaxed binding` de Spring convierte `bancs-app` → `bancsApp` automáticamente:
+
+```java
+/**
+ * Códigos backend del catálogo oficial del banco
+ * (sqb-cfg-codigosBackend-config/codigosBackend.xml).
+ * Valores oficiales:
+ *   iib      = "00638" -- Middleware Integracion (IIB)
+ *   bancsApp = "00045" -- Core Bancario (BANCS)
+ */
+@ConfigurationProperties(prefix = "bancs.error-codes")
+public record BancsErrorCodesProperties(String iib, String bancsApp) {}
+```
+
+Si el servicio consume backends adicionales (DataPower, WSO2, WAS, etc.), agregar los campos correspondientes al record y exponerlos en `application.yml`. Catálogo completo en `reference_codigos_backend.md` de la memoria.
+
 ---
 
 #### 4.11 application.yml
@@ -1599,12 +1857,13 @@ public class CustomerPropertiesConfig implements CustomerConfigOutputPort {
 **Required structure (in this order):**
 1. `spring.application.name`
 2. `app.normalization.*` (or service-specific config) -- only if needed
-3. `bancs.webclients.*` -- one entry per TX
-4. `bancs.iib-support.enabled`
-5. `web-filter.trace-id-header-name: x-guid`
-6. `resilience4j.circuitbreaker.bancs-client.enabled` + `instances.*` (per-TX)
-7. `optimus.web.filter.*` + `optimus.web.headers.*`
-8. `trace-logger.enabled` + `trace-logger.custom-level.*`
+3. `bancs.error-codes.iib` + `bancs.error-codes.bancs-app` (Rule 9c) — **MANDATORY**
+4. `bancs.webclients.*` -- one entry per TX
+5. `bancs.iib-support.enabled`
+6. `web-filter.trace-id-header-name: x-guid`
+7. `resilience4j.circuitbreaker.bancs-client.enabled` + `instances.*` (per-TX)
+8. `optimus.web.filter.*` + `optimus.web.headers.*`
+9. `trace-logger.enabled` + `trace-logger.custom-level.*`
 
 **DO NOT add to application.yml:**
 - `logging:` block -- log levels go in `logback-spring.xml` via `${TPL_LOG_INFO}` / `${TPL_LOG_WARN}`
@@ -1612,6 +1871,8 @@ public class CustomerPropertiesConfig implements CustomerConfigOutputPort {
 - `trace-logger.payload.*` -- not in gold standard
 
 **Variable defaults: NEVER use inline defaults `${CCC_VAR:default}`.** All values come from environment (Helm). The gold standard never uses inline defaults.
+
+**Excepción única — `bancs.error-codes`:** los valores son constantes del catálogo oficial del banco (`00638` y `00045` no cambian entre entornos). Se permite inline default `${CCC_BANCS_ERROR_CODE_IIB:00638}` / `${CCC_BANCS_ERROR_CODE_BANCS_APP:00045}` para que el servicio arranque aunque el Helm no los declare — el ENV queda como válvula de escape si el banco decidiera cambiar un código oficial.
 
 **CRITICAL: Each `ws-txNNNNNN.base-url` MUST match the adapter from the catalog `prompts/tx-adapter-catalog.json`.**
 
@@ -1636,6 +1897,11 @@ spring:
 # Downstream service configuration -- one entry per TX (or group of TX sharing a base URL)
 # Each ws-tx entry maps to a @BancsService("ws-txNNNNNN") qualifier in BancsClientHelper subclasses
 bancs:
+  # Rule 9c -- códigos oficiales del catálogo sqb-cfg-codigosBackend-config/codigosBackend.xml
+  # Usados por SoapResponseHelper para poblar error.backend según el origen del error.
+  error-codes:
+    iib: ${CCC_BANCS_ERROR_CODE_IIB:00638}
+    bancs-app: ${CCC_BANCS_ERROR_CODE_BANCS_APP:00045}
   webclients:
     ws-tx<CODE1>:
       max-in-memory-size: ${CCC_BANCS_MAX_IN_MEMORY_SIZE}
