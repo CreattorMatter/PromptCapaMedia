@@ -177,7 +177,21 @@ log.warn("algo");     // este es el correcto (ServiceLogHelper)
 
 **Acción:** eliminar imports `org.slf4j.*`, campos `Logger`/`LoggerFactory`, y todas las llamadas `LOGGER.xxx(...)`. Quedarse solo con `ServiceLogHelper log` inyectado.
 
-### Check 2.6 — No abuso de log.info
+### Check 2.6 — `log.info` reservado para eventos de contrato [FB-JA] [Rule 9e.1]
+
+`log.info` debe usarse solo para eventos operativos reales (inicio/fin de operación de negocio, éxito de TX Bancs con efecto colateral). Logs de diagnóstico intermedio (*"Basic info retrieved for CIF: X"*) van en `log.debug`.
+
+```bash
+# Heurística — logs con verbos típicos de diagnóstico en info
+grep -rnE "log\.info\(\"(Basic|Retrieved|Starting|Processing|Got|Found|Mapping|Normalizing)" \
+    <PATH>/src/main/java/com/pichincha/sp/application/
+```
+
+Cualquier match → **MEDIUM**. Revisar si son eventos de contrato o diagnóstico. Si es diagnóstico → pasar a `log.debug` (ServiceLogHelper ya lo soporta).
+
+**Referencia:** feedback Jonathan Arana / Alexis 2026-04-17 sobre wsclientes0007 (`log.info("Basic info retrieved for CIF: {}", ...)` bajado a debug en commit post-fix).
+
+### Check 2.7 — No abuso de log.info
 
 ```bash
 grep -rc "log\.info\|logLevelHandler.log(CustomLogLevel.INFO" <PATH>/src/main/java/ | awk -F: '$2 > 5 {print}'
@@ -268,10 +282,14 @@ Cualquier archivo encontrado → **HIGH**.
 ### Check 4.3 — Controller invoca al validator
 
 ```bash
-grep -rn "HeaderRequestValidator\." <PATH>/src/main/java/com/pichincha/sp/infrastructure/input/adapter/*/impl/*Controller.java
+# El Controller debe inyectar HeaderRequestValidator (Rule 9e.2) y llamar a
+# validator.validate(...) — NO llamada estática HeaderRequestValidator.validate(...)
+grep -rnE "headerValidator\.validate\(|HeaderRequestValidator\s+headerValidator" \
+    <PATH>/src/main/java/com/pichincha/sp/infrastructure/input/adapter/*/impl/*Controller.java
 ```
 
-0 matches → **MEDIUM** (existe el validator pero no se usa).
+- 0 matches → **MEDIUM** (el validator existe pero no se usa, o sigue siendo estático).
+- Si se encuentra `HeaderRequestValidator\.validate\(` (con punto, llamada estática sobre la clase) → **HIGH** (viola Rule 9e.2).
 
 ### Check 4.4 — Validaciones de body/business siguen en domain/application
 
@@ -280,7 +298,7 @@ Body validations (ej: CIF vacío, identificación inválida) **SÍ van en applic
 ### Check 4.5 — HeaderRequestValidator rechaza header null y bloque `<bancs>` faltante [Rule 9b]
 
 ```bash
-grep -A6 "public static Optional<String> validate" \
+grep -A6 "Optional<String> validate" \
     <PATH>/src/main/java/com/pichincha/sp/infrastructure/input/adapter/soap/util/HeaderRequestValidator.java \
   | grep -cE "header == null|getBancs\(\) == null"
 ```
@@ -299,9 +317,40 @@ grep -c "Datos de la cabecera de la transaccion no se han asignado" \
     <PATH>/src/main/java/com/pichincha/sp/infrastructure/input/adapter/soap/util/HeaderRequestValidator.java
 ```
 - 0 matches → **MEDIUM** (mensaje custom en vez del canónico).
-- ≥ 2 matches ✓ PASS.
+- ≥ 1 match ✓ PASS (puede ser 1 constante reusada o 2 literales).
 
 **Referencia:** wsclientes0007 post-fix 2026-04-16 (commit `bbcc62a` de Kevin Armas).
+
+### Check 4.6 — Patterns de validación del header externalizados [FB-JA] [Rule 9e.2]
+
+Los patterns regex del `HeaderRequestValidator` deben venir de `@ConfigurationProperties` — NO hardcoded como `private static final Pattern` — para permitir override vía ConfigMap de OpenShift sin redeploy del artefacto.
+
+```bash
+# No debe haber Pattern.compile hardcoded en el validator
+grep -cE "private static final Pattern|Pattern\.compile\(\"\^" \
+    <PATH>/src/main/java/com/pichincha/sp/infrastructure/input/adapter/soap/util/HeaderRequestValidator.java
+```
+
+\> 0 matches → **HIGH**. Los patterns deben salir de una clase `@ConfigurationProperties` inyectada por constructor.
+
+```bash
+# Debe existir HeaderValidationProperties con prefix correcto
+find <PATH>/src/main/java/com/pichincha/sp/infrastructure/config -name "HeaderValidationProperties.java" | wc -l
+grep "prefix = \"header-validation.patterns\"" \
+    <PATH>/src/main/java/com/pichincha/sp/infrastructure/config/HeaderValidationProperties.java 2>/dev/null | wc -l
+```
+
+Alguno 0 → **HIGH**.
+
+```bash
+# El validator es @Component (no final class estática)
+grep -cE "^@Component|public class HeaderRequestValidator" \
+    <PATH>/src/main/java/com/pichincha/sp/infrastructure/input/adapter/soap/util/HeaderRequestValidator.java
+```
+
+< 2 matches → **HIGH** (el validator debe ser `@Component` con inyección de props, no `final class` con métodos estáticos).
+
+**Referencia:** feedback Jonathan Arana / Alexis 2026-04-17 sobre wsclientes0007; refactor aplicado en post-fix del mismo día.
 
 ---
 

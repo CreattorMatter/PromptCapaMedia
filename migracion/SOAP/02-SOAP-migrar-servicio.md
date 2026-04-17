@@ -323,6 +323,89 @@ grep -E "error-codes:|bancs-app:|iib:" src/main/resources/application*.yml
 
 Si tu servicio consume otros backends además de IIB y BANCS (ej: DataPower 00640, WSO2 00632, WAS 00633), ampliar el record con más campos y documentarlo.
 
+### Log Levels y Externalization (Rule 9e)
+
+**Rule 9e -- Logs de diagnóstico en `log.debug`, patterns y configs operativos externalizados.**
+
+#### 9e.1 — `log.info` solo para eventos de contrato, no diagnóstico
+
+El tracing estructurado sale por `@BpLogger` y `@BpTraceable`. En los Services/Adapters, reservar `log.info` **solo para eventos operativos reales** (inicio/fin de transacción Bancs, decisiones de negocio relevantes). Los logs de estado interno (ej: *"Basic info retrieved for CIF: X"*) van en `log.debug`.
+
+```java
+// INCORRECTO (ruido en test/prod)
+log.info("Basic info retrieved for CIF: {}", basicInfo.cif());
+
+// CORRECTO
+log.debug("Basic info retrieved for CIF: {}", basicInfo.cif());
+```
+
+**Feedback:** Jonathan Arana / Alexis 2026-04-17 — *"Ese log si no aporta valor para los ambientes de test y prod, solo para desarrollo que se lo coloque en debug"*.
+
+**Regla de mano:**
+- `log.info`: eventos de contrato — start/end de operación de negocio, success de TX Bancs con efecto colateral.
+- `log.debug`: diagnóstico intermedio — estado de variables, resultado parcial de una TX de solo-lectura.
+- `log.warn`: validación de negocio que termina en error recuperable.
+- `log.error`: fallas técnicas (FATAL según Rule 9d).
+
+#### 9e.2 — Valores operativos (regex, timeouts, flags) EXTERNALIZADOS
+
+Patterns de validación, timeouts, y cualquier valor que ops pueda querer ajustar **SIN redeploy del artefacto Java** va como `@ConfigurationProperties` con override por ConfigMap de OpenShift.
+
+**Mal patrón (no replicar):**
+```java
+public final class HeaderRequestValidator {
+  // Patterns hardcoded → si hay que cambiar, redeploy del .jar
+  private static final Pattern DEVICE_PATTERN =
+      Pattern.compile("^[A-Za-z0-9\\s_/();.,:\\-+=]*$");
+  // ...
+}
+```
+
+**Patrón correcto (wsclientes0007 post-fix 2026-04-17):**
+```java
+// infrastructure/config/HeaderValidationProperties.java
+@ConfigurationProperties(prefix = "header-validation.patterns")
+@Getter @Setter
+public class HeaderValidationProperties {
+  // Defaults como fallback — override vía ENV/ConfigMap
+  private String device = "^[A-Za-z0-9\\s_/();.,:\\-+=]*$";
+  private String alphanumeric = "^[A-Za-z0-9]*$";
+  // ...
+}
+
+// infrastructure/input/adapter/soap/util/HeaderRequestValidator.java
+@Component
+public class HeaderRequestValidator {
+  private final Pattern devicePattern;
+  // ...
+
+  public HeaderRequestValidator(HeaderValidationProperties props) {
+    this.devicePattern = Pattern.compile(props.getDevice());
+    // ...
+  }
+
+  public Optional<String> validate(GenericHeaderIn header) { ... }   // ya no es static
+}
+```
+
+**application.yml** solo documenta la configurabilidad:
+```yaml
+# Patterns de validación del header SOAP — configurables por entorno vía
+# ConfigMap de OpenShift. Override seteando las ENV:
+#   HEADER_VALIDATION_PATTERNS_DEVICE
+#   HEADER_VALIDATION_PATTERNS_ALPHANUMERIC
+#   HEADER_VALIDATION_PATTERNS_DIGITS_ONLY
+#   HEADER_VALIDATION_PATTERNS_ALPHANUMERIC_EXTENDED
+#   HEADER_VALIDATION_PATTERNS_BASE64
+#   HEADER_VALIDATION_PATTERNS_ALPHANUMERIC_DASH
+```
+
+**Feedback:** Jonathan Arana / Alexis 2026-04-17 — *"se había recomendado que se coloque en variables de entorno para poder cambiar en su momento sin tener que modificar el código mediante infraestructura con configmaps de OpenShift"*.
+
+**Consecuencias:**
+- El Controller inyecta `HeaderRequestValidator` por constructor (deja de usar llamada estática `HeaderRequestValidator.validate(...)`).
+- Los tests instancian el validator manualmente: `new HeaderRequestValidator(new HeaderValidationProperties())`.
+
 ### Security and Configuration (Rules 10-13)
 
 **Rule 10 -- NEVER hardcode credentials, URLs, or secrets** in code or YAMLs. Everything via `${CCC_*}` environment variables.
