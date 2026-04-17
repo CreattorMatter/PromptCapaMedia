@@ -956,6 +956,103 @@ grep -rn "@BancsService" <PATH>/src/main/java/com/pichincha/sp/infrastructure/ou
 
 ---
 
+## BLOQUE 13 — WAS specifics (solo si el legacy era WAS con BD)
+
+Aplica únicamente cuando el ANALISIS reportó `DB_USAGE: YES` y la migración usó modo MVC (Spring MVC + JPA + HikariCP). Si el proyecto no tiene `spring-boot-starter-data-jpa` en `build.gradle`, saltar todo el bloque.
+
+### Check 13.1 — JPA + WebFlux NO conviven
+
+```bash
+# Si hay starter-data-jpa, NO debe haber starter-webflux
+grep -E "spring-boot-starter-(webflux|data-jpa)" <PATH>/build.gradle
+```
+
+Si aparecen ambos -> **HIGH**. Regla 4 violada (NEVER mix JPA with WebFlux). Acción: remover `spring-boot-starter-webflux` y migrar adapters reactivos a blocking.
+
+### Check 13.2 — HikariCP configurado (no defaults)
+
+```bash
+grep -A20 "hikari:" <PATH>/src/main/resources/application.yml
+```
+
+Debe contener al menos: `maximum-pool-size`, `connection-timeout`, `idle-timeout`. Si solo está la sección vacía o falta -> **MEDIUM**. Acción: completar config Hikari con env vars `${CCC_DB_*}` (ver SOAP prompt Rule 4.1 para template).
+
+### Check 13.3 — `pool-name` definido
+
+```bash
+grep "pool-name:" <PATH>/src/main/resources/application.yml
+```
+
+0 matches -> **LOW**. Acción: agregar `pool-name: ${spring.application.name}-pool` para que las métricas de Micrometer/Prometheus separen pools por servicio.
+
+### Check 13.4 — `ddl-auto: validate` (NUNCA create / update / create-drop)
+
+```bash
+grep "ddl-auto:" <PATH>/src/main/resources/application.yml
+```
+
+Si es `create`, `create-drop`, o `update` en cualquier env -> **HIGH**. Acción: forzar `validate` (las migraciones de schema van por DBA / Liquibase / Flyway, NUNCA por Hibernate).
+
+### Check 13.5 — `open-in-view: false`
+
+```bash
+grep "open-in-view:" <PATH>/src/main/resources/application.yml
+```
+
+Si es `true` o no está -> **MEDIUM** (Spring Boot default es `true`, hay que negarlo explícitamente). Acción: agregar `open-in-view: false` bajo `spring.jpa`.
+
+### Check 13.6 — `@Transactional` en application/service, NO en adapters ni repositories
+
+```bash
+# Debe haber @Transactional en application/service/
+grep -rn "@Transactional" <PATH>/src/main/java/com/pichincha/sp/application/service/
+
+# NO debe haber en adapters ni repositories
+grep -rn "@Transactional" <PATH>/src/main/java/com/pichincha/sp/infrastructure/output/adapter/persistence/
+```
+
+Si aparece en `infrastructure/output/adapter/persistence/` -> **MEDIUM**. Las transacciones se gestionan en el boundary del use-case (application service), no en el adapter ni en el repo.
+
+### Check 13.7 — Output port de persistencia es framework-agnóstico
+
+```bash
+# El port no debe importar JPA/Spring Data
+grep -E "import (jakarta\.persistence|org\.springframework\.data)" <PATH>/src/main/java/com/pichincha/sp/application/output/port/
+```
+
+Si hay match -> **HIGH**. El port vive en application/, no puede conocer JPA. Mover los imports al adapter.
+
+### Check 13.8 — Entity y Domain separados
+
+```bash
+# Entities en infrastructure/persistence/entity/
+ls <PATH>/src/main/java/com/pichincha/sp/infrastructure/persistence/entity/ 2>/dev/null
+
+# Domain models NO deben tener @Entity
+grep -rn "@Entity" <PATH>/src/main/java/com/pichincha/sp/domain/
+```
+
+`@Entity` en `domain/` -> **HIGH**. Domain debe ser puro (records / POJOs sin anotaciones de framework). El mapeo va en `infrastructure/persistence/mapper/`.
+
+### Check 13.9 — Driver Oracle declarado y versionado
+
+```bash
+grep -E "ojdbc|oracle.*jdbc" <PATH>/build.gradle
+```
+
+0 matches -> **HIGH**. Acción: agregar `runtimeOnly 'com.oracle.database.jdbc:ojdbc11:<version>'` (versión según MCP fabrics / Confluence).
+
+### Check 13.10 — Secrets de BD vía env vars (no hardcoded)
+
+```bash
+# url, user, password deben usar ${CCC_*}
+grep -E "url:|username:|password:" <PATH>/src/main/resources/application.yml
+```
+
+Si alguno es literal (no `${...}`) -> **HIGH**. Los secrets NUNCA se commitean — se referencian como `${CCC_DB_URL}`, `${CCC_DB_USER}`, `${CCC_DB_PASSWORD}` y los provee el banco antes del deploy.
+
+---
+
 ## FORMATO DEL REPORTE
 
 Generás el reporte en este formato, en el orden de los bloques. Para cada check: emoji de estado + descripción corta + detalles si FAIL.
