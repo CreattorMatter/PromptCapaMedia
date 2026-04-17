@@ -1053,6 +1053,52 @@ Si alguno es literal (no `${...}`) -> **HIGH**. Los secrets NUNCA se commitean �
 
 ---
 
+## BLOQUE 14 — SonarLint binding (Connected Mode)
+
+Verifica que el proyecto migrado tiene el binding versionado a SonarCloud organizacional. Esto permite que cualquier dev del equipo arranque con feedback en tiempo real sin re-hacer el setup. Origen: PDF oficial `CDSRL-Guía de configuración SonarQube for ide (SonarLint)`.
+
+### Check 14.1 — Existe `.sonarlint/connectedMode.json`
+
+```bash
+test -f <PATH>/.sonarlint/connectedMode.json && echo "EXISTS" || echo "MISSING"
+```
+
+`MISSING` -> **HIGH**. Acción: bindar el proyecto en VS Code/IntelliJ con SonarQube for IDE → Share configuration. Ver guía en `prompts/configuracion-claude-code/sonarlint/README.md`.
+
+### Check 14.2 — `sonarCloudOrganization` = `bancopichinchaec`
+
+```bash
+grep -E '"sonarCloudOrganization":\s*"bancopichinchaec"' <PATH>/.sonarlint/connectedMode.json
+```
+
+0 matches -> **HIGH**. La organización debe ser literal `bancopichinchaec`. Si dice otra cosa, se está apuntando a un Sonar incorrecto.
+
+### Check 14.3 — `projectKey` no es placeholder
+
+```bash
+grep -E '"projectKey":\s*"<PROJECT_KEY' <PATH>/.sonarlint/connectedMode.json
+```
+
+Si matchea (placeholder `<PROJECT_KEY_FROM_SONARCLOUD>` aún presente) -> **HIGH**. Acción: reemplazar por el `projectKey` real obtenido desde la URL del proyecto en SonarCloud (`https://sonarcloud.io/project/overview?id=<UUID>`).
+
+### Check 14.4 — `.sonarlint/` está versionado, no ignorado
+
+```bash
+git -C <PATH> check-ignore .sonarlint/connectedMode.json
+```
+
+Si NO retorna vacío (es decir, está siendo ignorado) -> **MEDIUM**. Acción: revisar `.gitignore` raíz del proyecto y NO ignorar `.sonarlint/connectedMode.json` (sí ignorar `~/.sonarlint/` global, pero ese no vive en el repo).
+
+### Check 14.5 — Sin tokens commiteados
+
+```bash
+grep -rEn "(token|password|secret).*=.*['\"][A-Za-z0-9_-]{20,}" <PATH>/.sonarlint/ 2>/dev/null
+```
+
+Si hay match -> **HIGH** (CRITICAL). Acción: rotar el token en SonarCloud inmediatamente y purgar del historial git. SonarLint guarda tokens cifrados en el secret store del IDE — NUNCA en el repo.
+
+---
+
 ## FORMATO DEL REPORTE
 
 Generás el reporte en este formato, en el orden de los bloques. Para cada check: emoji de estado + descripción corta + detalles si FAIL.

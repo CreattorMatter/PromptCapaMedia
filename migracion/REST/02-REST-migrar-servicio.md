@@ -9,6 +9,7 @@
 > **NOT for:** WAS with DB. If the legacy is WAS and ANALISIS reports `DB_USAGE: YES`, use the SOAP prompt instead (Spring MVC supports JPA; WebFlux does not).
 > **Scaffold origin:** The Banco Pichincha **Fabrics MCP archetype** generates the initial REST scaffold (questionnaire input: 1 operation, no DB). This prompt assumes you start from that scaffold and fill in the migration logic; do NOT rebuild the project skeleton from scratch.
 > **Secrets:** NEVER look for or fabricate secrets (DB passwords, API tokens, keystores). Reference them as `${CCC_*}` env vars in `application.yml` and `helm/*.yml`. The bank provides real secret values ~1 week before production deploy.
+> **SonarLint local:** before opening the first PR, the migrated project MUST contain a versioned `.sonarlint/connectedMode.json` binding to SonarCloud organization `bancopichinchaec`. Use the template at `prompts/configuracion-claude-code/sonarlint/connectedMode.template.json` and replace `<PROJECT_KEY_FROM_SONARCLOUD>` with the real key. See full setup guide at `prompts/configuracion-claude-code/sonarlint/README.md`. Validated by checklist BLOQUE 14.
 
 ---
 

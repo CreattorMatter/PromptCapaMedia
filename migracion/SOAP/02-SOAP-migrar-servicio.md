@@ -9,6 +9,7 @@
 > **Persistence:** if the legacy is WAS with DB (`DB_USAGE: YES` in ANALISIS), use **HikariCP + JPA/JDBC + Oracle** under Spring MVC. NEVER mix JPA with WebFlux.
 > **Scaffold origin:** The Banco Pichincha **Fabrics MCP archetype** generates the initial SOAP scaffold (questionnaire input: 2+ operations, optional DB). This prompt assumes you start from that scaffold and fill in the migration logic; do NOT rebuild the project skeleton from scratch.
 > **Secrets:** NEVER look for or fabricate secrets (DB passwords, API tokens, keystores). Reference them as `${CCC_*}` env vars in `application.yml` and `helm/*.yml`. The bank provides real secret values ~1 week before production deploy.
+> **SonarLint local:** before opening the first PR, the migrated project MUST contain a versioned `.sonarlint/connectedMode.json` binding to SonarCloud organization `bancopichinchaec`. Use the template at `prompts/configuracion-claude-code/sonarlint/connectedMode.template.json` and replace `<PROJECT_KEY_FROM_SONARCLOUD>` with the real key. See full setup guide at `prompts/configuracion-claude-code/sonarlint/README.md`. Validated by checklist BLOQUE 14.
 
 **This prompt applies to services whose WSDL defines 2 or more operations, OR to single-operation WAS services that require a database (since REST/WebFlux cannot host JPA). For single-operation WSDLs without DB, use `REST/02-REST-migrar-servicio.md` instead.**
 

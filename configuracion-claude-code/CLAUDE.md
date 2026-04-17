@@ -16,6 +16,8 @@ Migracion de servicios legacy a Java 21 + Spring Boot + arquitectura hexagonal O
 
 **Secrets:** NUNCA buscar/inventar. Referenciar como `${CCC_*}` env vars en `application.yml` y `helm/*.yml`. El banco provee valores reales ~1 semana antes del deploy productivo.
 
+**SonarLint local:** todo proyecto migrado debe tener `.sonarlint/connectedMode.json` versionado apuntando a la organización `bancopichinchaec` en SonarCloud. Setup detallado en `configuracion-claude-code/sonarlint/README.md`. Validado por la checklist post-migración (BLOQUE 14).
+
 ## Build & Test
 ```bash
 # bloque_estricto_a_copiar
