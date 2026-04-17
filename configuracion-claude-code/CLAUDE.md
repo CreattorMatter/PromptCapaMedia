@@ -52,7 +52,7 @@ Usar tnd-msa-sp-wsclientes0024 como proyecto de referencia para copiar patrones 
 2. `/migrar` — Ejecuta migracion con autocorreccion
    - WSDL con 1 operacion -> usa `migracion/REST/02-REST-migrar-servicio.md`
    - WSDL con 2+ operaciones -> usa `migracion/SOAP/02-SOAP-migrar-servicio.md`
-3. `/post-migracion` — Audita el proyecto migrado contra la checklist (`post-migracion/03-checklist.md`) y genera PENDIENTES_*.md (`post-migracion/03-preparar-integracion.md`)
+3. `/post-migracion` — Audita el proyecto migrado contra la checklist (`post-migracion/03-checklist.md`), genera reporte pass/fail por bloque
 
 ## Commits
 Conventional Commits: `feat|fix|refactor|test|docs|chore|ci|iac: descripcion`
@@ -61,4 +61,3 @@ Conventional Commits: `feat|fix|refactor|test|docs|chore|ci|iac: descripcion`
 @prompts/migracion/REST/02-REST-migrar-servicio.md
 @prompts/migracion/SOAP/02-SOAP-migrar-servicio.md
 @prompts/post-migracion/03-checklist.md
-@prompts/post-migracion/03-preparar-integracion.md

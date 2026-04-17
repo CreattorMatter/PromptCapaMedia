@@ -1,44 +1,45 @@
 ---
 name: post-migracion
-description: Escanea un proyecto migrado, documenta stubs/pendientes, genera guia de primera ejecucion y casos de uso QA
+description: Audita un proyecto Java migrado contra la checklist BPTPSRE y genera reporte pass/fail por bloque con severidad y accion sugerida
 allowed-tools: Read Glob Grep Bash Write Agent
 ---
 
 # /post-migracion
 
-Genera la documentacion de todo lo que falta para conectar el servicio al banco.
+Ejecuta la auditoria de calidad post-migracion contra las reglas vivas del equipo BPTPSRE de Banco Pichincha.
+
+**NO modifica codigo.** Solo audita y reporta. Los fixes se hacen en un flujo aparte.
 
 ## Prerequisitos
 - Proyecto Java migrado en el directorio actual
 - ANALISIS_<ServiceName>.md disponible para cross-reference
+- Acceso a `prompts/post-migracion/03-checklist.md` (cargado via CLAUDE.md)
+
+## Cuando se usa
+- Despues de correr `/migrar` y antes de abrir PR
+- Para auditar servicios que ya estan en `develop` antes de pasar a `release`
+
+## Input
+Path absoluto al proyecto migrado (ej: `C:\Dev\Banco Pichincha\CapaMedia\0007\destino`).
 
 ## Pasos
 
-1. **Escanear stubs y TODOs**
-   - Buscar en *.java: TODO, FIXME, TBD, UnsupportedOperationException, pendiente_validar
-   - Para cada stub: generar tarjeta de remediacion con UMP legacy, campos, formato CIF, patron de implementacion
+1. **Bloque 0: Pre-check** — Detectar tipo de proyecto (REST/SOAP/MVC) y gold standard aplicable
+   - REST -> referencia `tnd-msa-sp-wsclientes0024`
+   - SOAP -> referencia `tnd-msa-sp-wsclientes0015`
 
-2. **Auditar variables de entorno**
-   - Cross-referenciar ${CCC_*} entre application.yml y helm/*.yml
-   - Flaggear variables faltantes o huerfanas
+2. **Ejecutar la checklist** (`prompts/post-migracion/03-checklist.md`) bloque por bloque
+   - Cada bloque referencia su origen: PDF oficial, feedback Jean Pierre Garcia, commits especificos, MCP fabrics
+   - Para cada regla: pass/fail con evidencia (archivo + linea)
+   - Severidad por hallazgo: HIGH / MEDIUM / LOW
+   - Accion sugerida concreta para cada fail
 
-3. **Inventariar credenciales**
-   - ARTIFACT_USERNAME/TOKEN, SONAR_TOKEN, etc.
-   - Documentar como obtener cada una
-
-4. **Generar guia de primera ejecucion**
-   - 8-11 pasos: desde configurar credenciales hasta smoke test SOAP
-   - Incluir template .env.local
-
-5. **Lanzar agente qa-generator** para generar casos de uso QA
-   - Formato BDD con XML completo
-   - Categorias: exito, validacion, backend, failover, error tecnico
-
-6. **Calcular score de preparacion**
-   - 12 aspectos ponderados
-   - Recomendacion: listo / casi listo / en progreso / necesita atencion
-
-7. **Generar PENDIENTES_<ServiceName>.md**
+3. **Generar reporte estructurado** `CHECKLIST_<ServiceName>.md` con:
+   - Resumen ejecutivo (pass/fail totales por bloque)
+   - Detalle por bloque con violaciones encontradas
+   - Tabla de severidad agregada
+   - Lista priorizada de fixes (HIGH primero)
+   - Recomendacion: APTO PARA PR / REQUIERE FIXES
 
 ## Ejemplo de uso
 ```
