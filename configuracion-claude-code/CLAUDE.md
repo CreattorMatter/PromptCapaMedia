@@ -50,11 +50,15 @@ Usar tnd-msa-sp-wsclientes0024 como proyecto de referencia para copiar patrones 
 ## Flujo de trabajo
 1. `/pre-migracion <ruta>` — Analiza legacy, genera ANALISIS_*.md
 2. `/migrar` — Ejecuta migracion con autocorreccion
-3. `/post-migracion` — Genera PENDIENTES_*.md
+   - WSDL con 1 operacion -> usa `migracion/REST/02-REST-migrar-servicio.md`
+   - WSDL con 2+ operaciones -> usa `migracion/SOAP/02-SOAP-migrar-servicio.md`
+3. `/post-migracion` — Audita el proyecto migrado contra la checklist (`post-migracion/03-checklist.md`) y genera PENDIENTES_*.md (`post-migracion/03-preparar-integracion.md`)
 
 ## Commits
 Conventional Commits: `feat|fix|refactor|test|docs|chore|ci|iac: descripcion`
 
 @prompts/pre-migracion/01-analisis-servicio.md
-@prompts/migracion/02-migrar-servicio.md
+@prompts/migracion/REST/02-REST-migrar-servicio.md
+@prompts/migracion/SOAP/02-SOAP-migrar-servicio.md
+@prompts/post-migracion/03-checklist.md
 @prompts/post-migracion/03-preparar-integracion.md
