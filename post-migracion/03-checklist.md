@@ -12,7 +12,12 @@ Después de correr el prompt de migración (`02-migrar-servicio.md`) y antes de 
 
 ## INPUT
 
-Un único argumento: **path absoluto al proyecto migrado** (ej: `C:\Dev\Banco Pichincha\CapaMedia\0007\destino`).
+Dos argumentos (el segundo es opcional pero recomendado):
+
+1. **`<MIGRATED_PATH>`** — path absoluto al **proyecto migrado** (ej: `C:\Dev\Banco Pichincha\CapaMedia\0007\destino`). OBLIGATORIO.
+2. **`<LEGACY_PATH>`** — path absoluto al **servicio legacy original** (ej: `C:\Dev\Banco Pichincha\CapaMedia\0007\legacy\sqb-msa-wsclientes0007`). OPCIONAL pero recomendado: habilita el análisis cruzado del BLOQUE 0 (WSDL legacy vs migrado, conteo de operaciones, nombres, namespaces).
+
+Si no se pasa el segundo argumento, el BLOQUE 0 degrada a "solo cuenta en el WSDL copiado al proyecto migrado" y los Checks 0.3 y 0.4 se saltan con severidad **MEDIUM** (no se pudo cruzar con la fuente).
 
 ## FUENTES DE LAS REGLAS
 
@@ -44,36 +49,132 @@ grep -rl "@RestController" <PATH>/src/main/java
 - Hay `@RestController` y no `@Endpoint` → **REST** (gold standard: `tnd-msa-sp-wsclientes0024`, FROZEN 2026-04-14)
 - Ambos o ninguno → **FAIL HIGH** (proyecto malformado)
 
-### Check 0.2 — Cantidad de operaciones WSDL coincide con el framework
+### Check 0.2 — Conteo de operaciones: legacy ↔ migrado ↔ framework
 
-**Principio del banco:** la decisión REST vs SOAP se hace por **cantidad de operaciones en el `<portType>` del WSDL legacy**. Ambos tipos sirven SOAP XML al caller (URL `/IntegrationBus/soap/<Service>`); lo que cambia es el framework Spring usado.
+**Principio del banco:** la matriz oficial es estricta por `<portType>` del WSDL legacy:
+
+| Operaciones WSDL | Framework correcto | Prompt usado |
+|---|---|---|
+| **1** | Spring WebFlux + `@RestController` (Netty reactive, sin `.block()`) | REST |
+| **2 o más** | Spring MVC + `@Endpoint` (Spring WS dispatching sobre MVC + Undertow) | SOAP |
+
+Aplica igual para IIB, WAS y ORQ. BD presente es ortogonal (suma HikariCP+JPA o R2DBC según el caso, NO cambia la decisión REST/SOAP).
+
+#### Paso 1 — Contar operaciones en el WSDL **migrado**
 
 ```bash
-# Contar operaciones del portType (solo dentro de <wsdl:portType>, NO del binding
-# — el binding replica cada operation, duplicando el conteo)
-awk '/<wsdl:portType/,/<\/wsdl:portType>/' <PATH>/src/main/resources/legacy/*.wsdl 2>/dev/null \
-  | grep -c "<wsdl:operation"
+MIGRATED_WSDL=$(ls <MIGRATED_PATH>/src/main/resources/legacy/*.wsdl 2>/dev/null | head -1)
+
+OPS_MIGRATED=$(awk '/<wsdl:portType/,/<\/wsdl:portType>/' "$MIGRATED_WSDL" \
+  | grep -c "<wsdl:operation")
+
+echo "Migrado tiene $OPS_MIGRATED operación(es) en el portType"
 ```
 
-**Matriz de decisión (oficial, sin excepciones):**
+Si no se encuentra WSDL en `src/main/resources/legacy/` → **HIGH** (scaffold incompleto: el WSDL debe estar copiado ahí para que `generateFromWsdl` funcione).
 
-| Operaciones WSDL | Framework correcto | Prompt |
-|---|---|---|
-| 1 | Spring WebFlux + `@RestController` (Netty reactive, sin `.block()`) | REST |
-| 2 o más | Spring MVC + `@Endpoint` (servlet Undertow, Spring WS dispatching sobre MVC) | SOAP |
+#### Paso 2 — Contar operaciones en el WSDL **legacy original** (si `<LEGACY_PATH>` fue provisto)
 
-La matriz se aplica por igual a legacy IIB, WAS y ORQ. La presencia de BD (`DB_USAGE: YES`) se trata como una tecnología agregada **dentro** del prompt elegido (HikariCP+JPA), **no** como criterio para saltar a otro prompt.
+```bash
+if [ -n "<LEGACY_PATH>" ]; then
+  LEGACY_WSDL=$(find <LEGACY_PATH> -name "*.wsdl" 2>/dev/null | head -1)
+  OPS_LEGACY=$(awk '/<wsdl:portType/,/<\/wsdl:portType>/' "$LEGACY_WSDL" \
+    | grep -c "<wsdl:operation")
+  echo "Legacy tiene $OPS_LEGACY operación(es) en el portType"
+else
+  echo "Legacy NO fue provisto -> se salta cruce, se usa solo OPS_MIGRATED"
+  OPS_LEGACY="$OPS_MIGRATED"
+fi
+```
 
-**Reglas:**
-- 1 op + tipo REST → ✅ PASS
-- 2+ ops + tipo SOAP → ✅ PASS
-- 1 op + tipo SOAP → **HIGH** (mal-clasificado: debió ser REST+WebFlux)
-- 2+ ops + tipo REST → **HIGH** (REST+WebFlux solo soporta 1 operación; este servicio necesita dispatching multi-operation de Spring WS sobre Spring MVC)
-- 1 op + REST + DB presente → flag `ATTENTION_NEEDED_REST_WITH_DB` en el reporte (caso raro; el equipo decide si va R2DBC o un boundary blocking explícito)
+#### Paso 3 — ¿Coinciden los conteos?
+
+- `OPS_LEGACY == OPS_MIGRATED` → ✅ OK, el WSDL se copió fiel al legacy
+- `OPS_LEGACY != OPS_MIGRATED` → **HIGH** "¡Che! El WSDL del proyecto tiene N operaciones pero el legacy tenía M. Revisá si se perdió o duplicó alguna operación al copiar."
+- `<LEGACY_PATH>` no provisto → **MEDIUM** "No se pudo cruzar con el legacy; tomando el conteo del proyecto como fuente única."
+
+#### Paso 4 — Veredicto conversacional (diálogo explícito)
+
+El reporte debe rendir este diálogo literal, con los valores reemplazados:
+
+```
+¿Cuántas operaciones tiene el WSDL? → $OPS_LEGACY
+¿Qué framework corresponde según la matriz? → <REST si OPS=1 | SOAP si OPS>=2>
+¿Qué framework se usó en la migración? → <projectType de Check 0.1>
+¿Coincide lo usado con lo que la matriz pide? → <SÍ ✅ | NO ❌>
+Veredicto final: <PASS | HIGH mal-clasificado | etc.>
+```
+
+#### Paso 5 — Reglas de severidad
+
+- 1 op legacy + tipo REST → ✅ **PASS**. Diálogo: *"Es 1 op, va REST. ¿Está OK? Sí, está OK."*
+- 2+ ops legacy + tipo SOAP → ✅ **PASS**. Diálogo: *"Son N ops, va SOAP. ¿Está OK? Sí, está OK."*
+- 1 op legacy + tipo SOAP → **HIGH** (mal-clasificado). Diálogo: *"Es 1 op → debió ir REST + WebFlux. Se migró como SOAP → está mal-clasificado."*
+- 2+ ops legacy + tipo REST → **HIGH** (mal-clasificado). Diálogo: *"Son N ops → REST+WebFlux no soporta dispatching multi-operation, necesita Spring WS sobre MVC."*
+- 1 op + tipo REST + `DB_USAGE: YES` → ✅ **PASS con flag** `ATTENTION_NEEDED_REST_WITH_DB`. Diálogo: *"Es 1 op con BD → queda en REST. ¿Usaste R2DBC o blocking boundary? Confirmá el approach con el equipo."*
 
 **Hallazgo documentado:** wsclientes0007 tiene 1 op y está migrado como SOAP (ver [memoria mis-classification](../../.claude/projects/C--Dev-Banco-Pichincha-CapaMedia/memory/reference_mcp_fabrics_gaps.md)). Es **caso mal-clasificado que NO se reclasifica ahora** por costo vs beneficio (ya está funcionando, pasa checklist, build verde). Los futuros servicios con 1 op deben usar el prompt REST (sin importar si tienen BD — la matriz es estricta por cantidad de operaciones).
 
-**Guardar en el contexto del reporte:** `projectType`, `goldStandard`, `operationsCount`.
+**Guardar en el contexto del reporte:** `projectType`, `goldStandard`, `opsLegacy`, `opsMigrated`, `opsMatch`, `expectedFramework`, `actualFramework`, `frameworkMatch`.
+
+---
+
+### Check 0.3 — Nombres de operaciones: legacy = migrado
+
+Requiere `<LEGACY_PATH>` provisto. Si no, **MEDIUM** (skip).
+
+```bash
+# Extraer nombres de operaciones del portType de cada WSDL
+LEGACY_OPS=$(awk '/<wsdl:portType/,/<\/wsdl:portType>/' "$LEGACY_WSDL" \
+  | grep -oE '<wsdl:operation name="[^"]+"' \
+  | sed 's/.*name="\([^"]*\)".*/\1/' | sort)
+
+MIGRATED_OPS=$(awk '/<wsdl:portType/,/<\/wsdl:portType>/' "$MIGRATED_WSDL" \
+  | grep -oE '<wsdl:operation name="[^"]+"' \
+  | sed 's/.*name="\([^"]*\)".*/\1/' | sort)
+
+diff <(echo "$LEGACY_OPS") <(echo "$MIGRATED_OPS")
+```
+
+**Veredicto:**
+- `diff` vacío → ✅ **PASS**. Todas las operaciones están en ambos WSDLs con el mismo nombre.
+- Hay diferencias → **HIGH**. Reportar exactamente cuáles operaciones faltan o sobran, con el diff crudo. Diálogo: *"En el legacy está `<op1>` pero en el migrado no aparece. Se perdió en la migración."*
+
+### Check 0.4 — `targetNamespace` del WSDL: legacy = migrado
+
+Requiere `<LEGACY_PATH>` provisto. Si no, **MEDIUM** (skip).
+
+```bash
+LEGACY_NS=$(grep -oE 'targetNamespace="[^"]+"' "$LEGACY_WSDL" | head -1 | sed 's/.*="\([^"]*\)".*/\1/')
+MIGRATED_NS=$(grep -oE 'targetNamespace="[^"]+"' "$MIGRATED_WSDL" | head -1 | sed 's/.*="\([^"]*\)".*/\1/')
+
+[ "$LEGACY_NS" = "$MIGRATED_NS" ] && echo "OK" || echo "MISMATCH: legacy=$LEGACY_NS migrado=$MIGRATED_NS"
+```
+
+**Veredicto:**
+- Coinciden → ✅ **PASS**
+- Difieren → **HIGH**. Los consumidores existentes apuntan al namespace legacy; si el migrado lo cambió, rompe integración. Diálogo: *"El namespace legacy era `<X>`, el migrado es `<Y>`. Los callers antiguos no van a encontrar este endpoint. Hay que restaurar el namespace original o hacer una migración coordinada."*
+
+### Check 0.5 — XSDs referenciados desde el WSDL están presentes
+
+Requiere `<LEGACY_PATH>` provisto (opcional en migrado, pero útil).
+
+```bash
+# Listar imports de XSD desde el WSDL del proyecto migrado
+grep -oE 'schemaLocation="[^"]+"' "$MIGRATED_WSDL" \
+  | sed 's/.*="\([^"]*\)".*/\1/' \
+  | while read SCHEMA; do
+      BASENAME=$(basename "$SCHEMA")
+      find <MIGRATED_PATH>/src/main/resources/ -name "$BASENAME" 2>/dev/null | head -1 \
+        || echo "MISSING: $SCHEMA"
+    done
+```
+
+**Veredicto:**
+- Todos los XSDs referenciados existen → ✅ **PASS**
+- Alguno falta → **HIGH** (el build `generateFromWsdl` va a fallar). Diálogo: *"El WSDL importa `<schema>.xsd` pero no está copiado en `src/main/resources/`. Copialo del legacy o arregla el `schemaLocation`."*
+
+---
 
 ---
 
