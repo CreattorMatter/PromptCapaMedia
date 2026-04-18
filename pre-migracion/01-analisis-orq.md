@@ -92,10 +92,12 @@ For each ORQ operation:
 
 ORQ services have NO database and orchestrate multiple downstream calls. They classify as:
 
-**BUS Mode** — Spring WS + WebFlux (when 2+ downstream calls and no DB)
+The migration mode is decided solely by WSDL `<portType>` operation count — DB presence does NOT override the count rule:
 
-If the ORQ has 1 operation only, the migration uses the **REST prompt** (WebFlux + `@RestController`).
-If the ORQ has 2+ operations, the migration uses the **SOAP prompt** (Spring WS + `@Endpoint`).
+- **1 operation** -> REST prompt (Spring WebFlux + `@RestController`)
+- **2+ operations** -> SOAP prompt (Spring MVC + `@Endpoint`, Spring WS dispatching on top of MVC)
+
+For ORQ services specifically: no DB, no persistence layer — just orchestration. The stack matches the operation count.
 
 ---
 
@@ -136,9 +138,10 @@ For each operation: which input fields go to which downstream call; which downst
 Brief: pass-through | wrap | custom catalogue. List the error codes only if there are <10.
 
 ### 6. Migration Mode Recommendation
-- Number of operations -> REST or SOAP prompt
-- BUS Mode (no DB)
-- Spring WS + WebFlux (or @RestController for single-op)
+- WSDL `<portType>` operation count is the only decision input
+- **1 operation** -> REST prompt (Spring WebFlux + `@RestController`)
+- **2+ operations** -> SOAP prompt (Spring MVC + `@Endpoint`, Spring WS dispatching on top of MVC)
+- ORQs have no DB, so no HikariCP+JPA add-on is needed in either case
 
 ### 7. Uncertainties
 Anything ambiguous, especially `UNEXPECTED_LOGIC_IN_ORQ` flags.

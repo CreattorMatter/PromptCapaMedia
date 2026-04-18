@@ -21,10 +21,19 @@ Your expertise includes:
 - WAS services with Java EE, JAX-WS endpoints, JDBC/JPA against Oracle
 - Banking integration with BANCS (core banking Temenos/TCS) through UMP (Utility Message Pattern) patterns or direct DB access
 - Target architecture: Java 21, Spring Boot 3.5.x, hexagonal OLA1, Gradle, OpenShift on-premise
-- **For WAS+DB targets:** HikariCP connection pool (team standard), JPA/JDBC, Spring MVC (NEVER WebFlux when DB is present)
+- **When DB access is present:** HikariCP + JPA/JDBC (team standard) — applied as an add-on within the chosen REST/SOAP prompt, NOT as a criterion for picking between them
 - Standards: BIAN 12, RFC 7807, Banco Pichincha Development Chapter guidelines
 
 Your objective is to produce a **complete, exhaustive, and verifiable** analysis document that allows another developer to implement the migration without seeing the legacy code. Every assertion must be backed by direct evidence from the source code.
+
+**Migration matrix (official, no exceptions):**
+
+| WSDL `<portType>` operation count | Target prompt | Spring stack |
+|---|---|---|
+| 1 operation | `migracion/REST/02-REST-migrar-servicio.md` | WebFlux + `@RestController` |
+| 2 or more operations | `migracion/SOAP/02-SOAP-migrar-servicio.md` | Spring MVC + `@Endpoint` |
+
+The rule applies identically to IIB, WAS, and ORQ sources. DB presence (`DB_USAGE: YES`) is reported in the analysis as an orthogonal fact — it does NOT override the operation-count rule.
 
 **Note on Fabrics:** the Banco Pichincha Fabrics MCP archetype generates the initial scaffold (REST vs SOAP, project skeleton) based on a questionnaire we answer (operation count, DB usage, etc.). Your analysis FEEDS that questionnaire — be especially explicit about: (a) operation count, (b) presence/absence of DB, (c) WSDL vs Java endpoint origin.
 
@@ -265,10 +274,10 @@ Scan the project for evidence of database usage:
    - Name, parameters in/out, purpose
 
 **Migration implication:**
-- If DB is detected in WAS -> the migration MUST use **Spring MVC + Undertow** (not WebFlux), with **HikariCP** as the connection pool (team standard).
-- If NO DB is detected in WAS (rare but possible — pure orchestration WAS) -> classification is the same as IIB (BUS Mode possible).
+- DB_USAGE is reported as an **orthogonal fact** — it does NOT change the REST vs SOAP decision (that is decided solely by WSDL `<portType>` operation count).
+- If `DB_USAGE: YES`, the migration prompt (whichever was chosen) adds **HikariCP + JPA/JDBC** as the persistence layer (team standard). This works in Spring MVC (SOAP prompt) natively; in WebFlux (REST prompt) it requires either R2DBC or an explicit blocking boundary — flag this case as `ATTENTION_NEEDED_REST_WITH_DB` in the Uncertainties section so the team can decide (rare case).
 
-**Expected output:** A table of accessed tables / stored procs, plus an explicit `DB_USAGE: YES | NO` flag for the BUS vs WAS classification step.
+**Expected output:** A table of accessed tables / stored procs, plus an explicit `DB_USAGE: YES | NO` flag for downstream reference.
 
 ### Step F: Parse deploy configuration (deploy-*-config.bat)
 
@@ -306,21 +315,24 @@ Cross-reference ALL information gathered in Steps A-F and generate the metrics t
 
 ### Step H: BUS vs WAS classification
 
-Apply these decision rules to determine the target implementation mode:
+Apply the **official matrix** based solely on WSDL `<portType>` operation count — no exceptions:
 
-| Condition | Result |
-|---|---|
-| Has its own database (JPA/JDBC) | **WAS (MVC)** -- Spring MVC + Undertow + JPA |
-| No DB, orchestrates 3+ external transactions | **BUS** -- Spring WS + Undertow (WebFlux only for BancsClient) |
-| No DB, expected volume > 100 req/s | **BUS (WebFlux)** |
-| Ambiguous or undeterminable case | **WAS (MVC)** -- safest default option |
+| WSDL operations | Target migration prompt | Spring stack |
+|---|---|---|
+| **1 operation** | `migracion/REST/02-REST-migrar-servicio.md` | WebFlux + `@RestController` |
+| **2 or more operations** | `migracion/SOAP/02-SOAP-migrar-servicio.md` | Spring MVC + `@Endpoint` (Spring WS dispatching) |
 
-**CRITICAL RULE:** NEVER mix JPA with WebFlux. If there is persistence, it is MVC. No exceptions.
+**Orthogonal fact — DB presence (`DB_USAGE` from Step E.2):**
+- If `DB_USAGE: YES`, the chosen prompt adds HikariCP + JPA/JDBC (works natively on Spring MVC; on WebFlux it needs R2DBC or a blocking boundary — flag as `ATTENTION_NEEDED_REST_WITH_DB` if it happens).
+- DB presence does NOT override the operation-count rule. Do NOT say "WAS with DB goes to SOAP". Say instead: "WAS with 1 op → REST; add HikariCP+JPA only if DB present".
+
+**Historical mode labels (BUS / WAS Mode):** earlier versions of this toolkit used "BUS (WebFlux)" vs "WAS (MVC)" as the classification. That two-axis model is now **deprecated**. Use the operation-count matrix above. If you must reference the old labels for continuity, treat BUS/WAS as informational (source type), not as stack choice.
 
 Document the classification with supporting evidence:
-- Number of UMPs/external TXs found
-- Presence/absence of database access
-- additionalInstances in production (volume indicator)
+- WSDL `<portType>` operation count (the ONLY decision input for stack)
+- Number of UMPs/external TXs found (informational)
+- `DB_USAGE: YES | NO` (orthogonal — drives HikariCP+JPA add-on, not the prompt choice)
+- additionalInstances in production (volume indicator, informational)
 
 ### Step I: Generate final document `ANALISIS_<ServiceName>.md`
 
@@ -592,26 +604,36 @@ This table is **MANDATORY** and must be filled with actual data from the analysi
 | Production concurrency | ? | additionalInstances from deploy-prod |
 ```
 
-### 17. BUS vs WAS Classification
+### 17. Migration Mode Classification (official matrix)
 
 ```markdown
 ## Service Classification
 
-**Result:** <BUS (WebFlux) | WAS (MVC)>
+**WSDL operation count (portType):** <N>
+**DB_USAGE:** <YES | NO>
+
+**Target migration prompt:**
+- 1 op  -> `migracion/REST/02-REST-migrar-servicio.md`
+- 2+ op -> `migracion/SOAP/02-SOAP-migrar-servicio.md`
+
+**Spring stack:**
+- 1 op  -> Spring WebFlux + `@RestController` (reactive, Netty)
+- 2+ op -> Spring MVC + `@Endpoint` (servlet, Undertow; Spring WS dispatching on top of MVC)
+
+**Persistence (add-on inside the chosen prompt, when DB_USAGE = YES):**
+- HikariCP + JPA/JDBC + Oracle (team standard, works natively on Spring MVC)
+- On WebFlux: requires R2DBC or explicit blocking boundary -> flag as `ATTENTION_NEEDED_REST_WITH_DB`
+
+**Legacy source type (informational only, does NOT drive the matrix):** <IIB | WAS | ORQ>
 
 **Evidence:**
-- Has its own database: <YES/NO - evidence>
+- WSDL operation count: <N> (from `<wsdl:portType>` in `<file>.wsdl`)
+- Has own database: <YES/NO - evidence>
 - Number of external TXs orchestrated: <number - list>
 - additionalInstances in production: <number>
 - Estimated volume: <high/medium/low - source of estimation>
 
-**Rule applied:** <which decision rule was applied>
-
-**Target framework:** <Spring WS + Undertow (BUS) | Spring MVC + Undertow (WAS)>
-**Paradigm:** <Reactive (Mono/Flux) | Imperative (blocking)>
-**Persistence:** <BANCS Core Adapter via REST | HikariCP + JPA/JDBC + Oracle>
-
-**REMINDER:** NEVER mix JPA with WebFlux.
+**REMINDER:** the REST/SOAP choice is decided strictly by operation count. Never add "but WAS+DB so use SOAP". If DB is present, add HikariCP+JPA to whichever prompt was chosen by the count.
 ```
 
 ### 18. Intentionally Omitted Items

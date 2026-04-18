@@ -10,8 +10,8 @@ prompts/
 │   ├── 01-analisis-servicio.md      # IIB y WAS — análisis exhaustivo
 │   └── 01-analisis-orq.md           # ORQ — análisis liviano (delegación)
 ├── migracion/
-│   ├── REST/02-REST-migrar-servicio.md   # WSDL 1 op + sin BD
-│   └── SOAP/02-SOAP-migrar-servicio.md   # WSDL 2+ ops, o WAS con BD
+│   ├── REST/02-REST-migrar-servicio.md   # WSDL 1 op — WebFlux + @RestController
+│   └── SOAP/02-SOAP-migrar-servicio.md   # WSDL 2+ ops — Spring MVC + @Endpoint
 ├── post-migracion/
 │   └── 03-checklist.md              # Auditoría pass/fail con severidad
 ├── configuracion-claude-code/       # CLAUDE.md, skills, agents, rules
@@ -25,9 +25,10 @@ prompts/
 ## Flujo (3 etapas)
 
 1. **`/pre-migracion <ruta>`** — detecta tipo (IIB / WAS / ORQ) y genera `ANALISIS_*.md`
-2. **`/migrar`** — implementa el microservicio
-   - WSDL 1 op + sin BD → REST (WebFlux + `@RestController`)
-   - WSDL 2+ ops, o WAS con BD → SOAP (Spring WS + `@Endpoint`, MVC con HikariCP+JPA si aplica)
+2. **`/migrar`** — implementa el microservicio. Matriz oficial (sin excepciones, igual para IIB/WAS/ORQ):
+   - WSDL **1 op** → REST + Spring WebFlux + `@RestController`
+   - WSDL **2+ ops** → SOAP + Spring MVC + `@Endpoint`
+   - Si hay BD, se agrega HikariCP+JPA dentro del prompt elegido (típicamente SOAP)
 3. **`/post-migracion`** — audita el proyecto migrado contra la checklist
 
 ## Setup recomendado

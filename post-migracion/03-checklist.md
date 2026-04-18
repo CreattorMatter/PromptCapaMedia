@@ -44,17 +44,36 @@ grep -rl "@RestController" <PATH>/src/main/java
 - Hay `@RestController` y no `@Endpoint` → **REST** (gold standard: `tnd-msa-sp-wsclientes0024`, FROZEN 2026-04-14)
 - Ambos o ninguno → **FAIL HIGH** (proyecto malformado)
 
-### Check 0.2 — WSDL: cantidad de operaciones
+### Check 0.2 — Cantidad de operaciones WSDL coincide con el framework
+
+**Principio del banco:** la decisión REST vs SOAP se hace por **cantidad de operaciones en el `<portType>` del WSDL legacy**. Ambos tipos sirven SOAP XML al caller (URL `/IntegrationBus/soap/<Service>`); lo que cambia es el framework Spring usado.
 
 ```bash
-grep -c "<wsdl:operation\|<operation " <PATH>/src/main/resources/wsdl/*.wsdl
+# Contar operaciones del portType (solo dentro de <wsdl:portType>, NO del binding
+# — el binding replica cada operation, duplicando el conteo)
+awk '/<wsdl:portType/,/<\/wsdl:portType>/' <PATH>/src/main/resources/legacy/*.wsdl 2>/dev/null \
+  | grep -c "<wsdl:operation"
 ```
 
-- 1 operación y tipo = REST → ✓
-- 2+ operaciones y tipo = SOAP → ✓
-- Mismatch → **FAIL HIGH** (usar el tipo incorrecto)
+**Matriz de decisión (oficial, sin excepciones):**
 
-**Guardar en el contexto del reporte:** `projectType`, `goldStandard`.
+| Operaciones WSDL | Framework correcto | Prompt |
+|---|---|---|
+| 1 | Spring WebFlux + `@RestController` (Netty reactive, sin `.block()`) | REST |
+| 2 o más | Spring MVC + `@Endpoint` (servlet Undertow, Spring WS dispatching sobre MVC) | SOAP |
+
+La matriz se aplica por igual a legacy IIB, WAS y ORQ. La presencia de BD (`DB_USAGE: YES`) se trata como una tecnología agregada **dentro** del prompt elegido (HikariCP+JPA), **no** como criterio para saltar a otro prompt.
+
+**Reglas:**
+- 1 op + tipo REST → ✅ PASS
+- 2+ ops + tipo SOAP → ✅ PASS
+- 1 op + tipo SOAP → **HIGH** (mal-clasificado: debió ser REST+WebFlux)
+- 2+ ops + tipo REST → **HIGH** (REST+WebFlux solo soporta 1 operación; este servicio necesita dispatching multi-operation de Spring WS sobre Spring MVC)
+- 1 op + REST + DB presente → flag `ATTENTION_NEEDED_REST_WITH_DB` en el reporte (caso raro; el equipo decide si va R2DBC o un boundary blocking explícito)
+
+**Hallazgo documentado:** wsclientes0007 tiene 1 op y está migrado como SOAP (ver [memoria mis-classification](../../.claude/projects/C--Dev-Banco-Pichincha-CapaMedia/memory/reference_mcp_fabrics_gaps.md)). Es **caso mal-clasificado que NO se reclasifica ahora** por costo vs beneficio (ya está funcionando, pasa checklist, build verde). Los futuros servicios con 1 op deben usar el prompt REST (sin importar si tienen BD — la matriz es estricta por cantidad de operaciones).
+
+**Guardar en el contexto del reporte:** `projectType`, `goldStandard`, `operationsCount`.
 
 ---
 
@@ -695,6 +714,41 @@ Lombok permitido: `@Getter`, `@RequiredArgsConstructor`, `@Setter` (solo en `@Co
 
 Uso de `@Data`/`@AllArgsConstructor`/`@NoArgsConstructor` → **MEDIUM**. Usar records de dominio en vez de clases con Lombok.
 
+### Check 8.5 — `spring-boot-starter-webflux` presente en servicios BUS [MCP gap]
+
+Compensación obligatoria del **gap conocido del MCP fabrics** (§1.0.3 del prompt SOAP): el MCP no incluye `webflux` en el scaffold aunque se le pase `webFramework: webflux`. Como `lib-bnc-api-client` usa `WebClient` internamente, sin este starter las llamadas a BANCS no funcionan.
+
+```bash
+# BUS mode debe tener webflux starter
+grep -c "spring-boot-starter-webflux" <PATH>/build.gradle
+# NO debe tener spring-boot-starter-web (el de MVC)
+grep -c "spring-boot-starter-web'\|spring-boot-starter-web\"" <PATH>/build.gradle
+```
+
+**Reglas (para proyectos con `tecnologia: bus` en `migration-context.json`):**
+- webflux=0 → **HIGH**. El MCP no lo incluyó y no se agregó post-scaffold. `lib-bnc-api-client` no va a funcionar.
+- webflux=1 y web=0 → ✅ PASS.
+- webflux=1 y web=1 → **MEDIUM**. Ambos starters presentes; Spring MVC va a tomar prioridad sobre WebFlux. Solo dejar uno (webflux).
+
+**Validación adicional — container real en runtime:**
+```bash
+# Buscar en logs de tests qué factory levanta Spring
+grep -r "UndertowServletWebServerFactory\|UndertowReactiveWebServerFactory" \
+    <PATH>/build/test-results/ 2>/dev/null | head -1
+```
+
+Si aparece `UndertowServletWebServerFactory` en un proyecto SOAP + BUS → **esperado** (Spring WS requiere servlet); el `webflux` starter se usa solo para el `WebClient` outbound. Este híbrido es el **patrón BUS oficial** del banco.
+
+**Referencia:** bug del MCP observado en wsclientes0007 scaffold inicial (commit `3fa03db` sin webflux) y corregido manualmente en `e1bff14`.
+
+### Check 8.6 — `jaxws-rt` presente en servicios SOAP [MCP gap]
+
+```bash
+grep -E "jaxws-rt:" <PATH>/build.gradle
+```
+
+0 matches → **HIGH**. El MCP no lo incluye; agregar con las exclusiones de `jaxb-core`/`jaxb-impl` (ver §1.0.3 del prompt SOAP).
+
 ---
 
 ## BLOQUE 9 — Tests y calidad
@@ -956,9 +1010,11 @@ grep -rn "@BancsService" <PATH>/src/main/java/com/pichincha/sp/infrastructure/ou
 
 ---
 
-## BLOQUE 13 — WAS specifics (solo si el legacy era WAS con BD)
+## BLOQUE 13 — Persistence layer (solo si el proyecto tiene JPA)
 
-Aplica únicamente cuando el ANALISIS reportó `DB_USAGE: YES` y la migración usó modo MVC (Spring MVC + JPA + HikariCP). Si el proyecto no tiene `spring-boot-starter-data-jpa` en `build.gradle`, saltar todo el bloque.
+Aplica únicamente cuando `build.gradle` incluye `spring-boot-starter-data-jpa` (tipicamente proyectos con `DB_USAGE: YES` en el ANALISIS, independiente de si la fuente legacy era IIB o WAS). Si no hay JPA starter, saltar todo el bloque.
+
+Nota sobre la matriz: la elección REST vs SOAP se decide por cantidad de operaciones del WSDL, no por presencia de BD. Este bloque audita los detalles de la capa de persistencia **dentro** del prompt que se haya usado (usualmente SOAP+MVC, que es donde JPA vive natural; si aparece en REST+WebFlux hay que chequear el flag `ATTENTION_NEEDED_REST_WITH_DB`).
 
 ### Check 13.1 — JPA + WebFlux NO conviven
 

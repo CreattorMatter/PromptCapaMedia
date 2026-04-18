@@ -16,10 +16,11 @@ Ejecuta la migracion completa usando el ANALISIS_*.md previamente generado.
 
 1. **Leer el analisis** — Extraer: nombre, tribu, framework (webflux/mvc), operaciones, UMPs
 
-1.5. **Rutear al prompt correcto segun el WSDL**:
-   - Contar operaciones expuestas en el WSDL del servicio legacy
-   - Si **1 operacion** -> cargar `prompts/migracion/REST/02-REST-migrar-servicio.md` (modo REST: WebFlux + @RestController, single adapter)
-   - Si **2+ operaciones** -> cargar `prompts/migracion/SOAP/02-SOAP-migrar-servicio.md` (modo SOAP: Spring WS + @Endpoint, BancsClientHelper abstract + per-TX subclasses)
+1.5. **Rutear al prompt correcto segun el WSDL** (matriz oficial, sin excepciones):
+   - Contar operaciones en el `<wsdl:portType>` (no el binding, que duplica)
+   - Si **1 operacion** -> cargar `prompts/migracion/REST/02-REST-migrar-servicio.md` (REST + Spring WebFlux + @RestController)
+   - Si **2+ operaciones** -> cargar `prompts/migracion/SOAP/02-SOAP-migrar-servicio.md` (SOAP + Spring MVC + @Endpoint, BancsClientHelper abstract + per-TX subclasses)
+   - La presencia de BD NO cambia la decision (es ortogonal al conteo de operaciones). Si hay BD, el prompt elegido agrega HikariCP+JPA.
    - Documentar la decision con la cantidad de operaciones encontradas
 
 2. **Bloque 1: Scaffolding**

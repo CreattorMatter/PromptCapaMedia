@@ -8,9 +8,11 @@ Migracion de servicios legacy a Java 21 + Spring Boot + arquitectura hexagonal O
 - **WAS** (WebSphere Application Server) — Java/JAX-WS + típicamente Oracle
 - **ORQ** (Orquestadores) — IIB orchestrators que delegan a otros servicios; análisis liviano
 
-**Regla de split REST/SOAP (igual para los 3 tipos):**
-- WSDL con 1 operación + sin BD -> REST (WebFlux + @RestController)
-- WSDL con 2+ operaciones, o WAS con BD -> SOAP (Spring WS + @Endpoint, MVC con HikariCP+JPA si aplica)
+**Matriz oficial REST/SOAP (igual para IIB, WAS y ORQ — sin excepciones):**
+- WSDL con **1 operación** -> REST + Spring WebFlux + `@RestController`
+- WSDL con **2+ operaciones** -> SOAP + Spring MVC + `@Endpoint` (Spring WS dispatching sobre MVC)
+
+La presencia de BD se maneja dentro del prompt elegido (HikariCP+JPA agregado al SOAP cuando aplica). NO es criterio para saltar de un prompt al otro.
 
 **Scaffold inicial:** lo genera el **Fabrics MCP del Banco Pichincha** vía cuestionario. La migración parte desde ese scaffold; no se reconstruye desde cero.
 
@@ -67,8 +69,8 @@ Usar tnd-msa-sp-wsclientes0024 como proyecto de referencia para copiar patrones 
    - IIB o WAS -> usa `pre-migracion/01-analisis-servicio.md`
    - ORQ (orquestador) -> usa `pre-migracion/01-analisis-orq.md` (análisis liviano)
 2. `/migrar` — Ejecuta migracion con autocorreccion
-   - WSDL con 1 operacion + sin BD -> usa `migracion/REST/02-REST-migrar-servicio.md`
-   - WSDL con 2+ operaciones, o WAS con BD -> usa `migracion/SOAP/02-SOAP-migrar-servicio.md`
+   - WSDL con 1 operacion -> usa `migracion/REST/02-REST-migrar-servicio.md`
+   - WSDL con 2+ operaciones -> usa `migracion/SOAP/02-SOAP-migrar-servicio.md`
 3. `/post-migracion` — Audita el proyecto migrado contra la checklist (`post-migracion/03-checklist.md`), genera reporte pass/fail por bloque (incluye BLOQUE 13 si hay JPA/HikariCP)
 
 ## Commits
