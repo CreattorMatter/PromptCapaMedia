@@ -137,10 +137,14 @@ grep -r "import jakarta" src/main/java/**/domain/
 **Rule 3 — `application/service/` NEVER imports classes from `infrastructure/`:**
 The application layer only knows about ports (interfaces) and domain models. Never infrastructure DTOs, adapters, config, or mappers.
 
-**Rule 4 — NEVER mix JPA with WebFlux in the same project:**
-- REST migration services use Spring WebFlux (Netty reactive)
-- If the service needs a database (Oracle/JPA) -> use the SOAP prompt with Spring MVC instead
-- **NEVER mix JPA with WebFlux** — they are incompatible paradigms
+**Rule 4 — Stack and persistence constraints:**
+- This prompt always produces a **Spring WebFlux** stack (Netty reactive, `@RestController`) — chosen because the WSDL has 1 operation. NOT Spring MVC.
+- **Default persistence path:** the service has no own DB; it orchestrates BANCS via Core Adapter REST (non-blocking via `WebClient`).
+- **Rare case (`DB_USAGE: YES` in ANALISIS with 1 op):** this prompt stays the target (the matrix is strict by operation count). To add DB access in WebFlux you MUST choose one of:
+  1. **R2DBC** — Spring Data R2DBC for reactive DB access (no HikariCP/JPA). Preferred when the team accepts reactive DB.
+  2. **Explicit blocking boundary** — isolate JDBC calls in a dedicated bounded `Schedulers.boundedElastic()` and document the tradeoff in the MIGRATION_REPORT.
+  - The analysis should have flagged this with `ATTENTION_NEEDED_REST_WITH_DB`. If present, stop and align the decision with the team before implementing.
+- **Hard rule:** NEVER mix blocking JPA (HikariCP+Hibernate) with WebFlux in the same request path — they are incompatible paradigms. If you end up with JPA, you have silently left the WebFlux contract.
 
 **Rule 5 — NEVER use `@Autowired` — always `@RequiredArgsConstructor`:**
 ```java
@@ -223,7 +227,7 @@ When the SOAP request does not include the `<bancs>` block inside `<headerIn>`, 
 
 **Rule 10 — NEVER hardcode credentials, URLs, or secrets** in code or YAMLs. Everything via `${CCC_*}` environment variables.
 
-**Rule 11 — NEVER use `spring.jpa.hibernate.ddl-auto`** — REST services have no database.
+**Rule 11 — NEVER use `spring.jpa.hibernate.ddl-auto`** — REST services default to no own database. If the analysis flagged `ATTENTION_NEEDED_REST_WITH_DB` (rare case: 1 op + DB), use **R2DBC** (reactive, no Hibernate DDL) or an explicit blocking boundary; in neither case enable JPA auto-DDL.
 
 **Rule 12 — NEVER commit `.env`, `credentials.json`, or similar files.**
 
@@ -2113,7 +2117,7 @@ optimus:
         x-geolocation: { forward: true }
 ```
 
-**Note:** NO H2 or JPA configuration — REST services have no database.
+**Note:** by default, NO H2 or JPA configuration — REST services have no own database. Exception: if the analysis flagged `ATTENTION_NEEDED_REST_WITH_DB` (rare case, 1 op + DB), add **R2DBC** (reactive driver) or an explicit blocking boundary isolated on `Schedulers.boundedElastic()` — NEVER plain HikariCP+JPA on the WebFlux request path.
 
 ---
 
