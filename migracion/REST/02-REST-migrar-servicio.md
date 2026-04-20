@@ -223,6 +223,31 @@ When the SOAP request does not include the `<bancs>` block inside `<headerIn>`, 
 
 **Implementation:** In the controller, check if `headerIn.getBancs() == null` BEFORE any business logic. If null, throw a typed exception (e.g., `BusinessValidationException("005", "El bloque bancs es requerido en la cabecera")`) or return the error directly.
 
+### Error Structure — Official Layout (Rule 9d)
+
+**Source:** `prompts/documentacion/BPTPSRE-Estructura de error-*.pdf`. Every `<error>` payload returned by the service MUST have these fields with these formats. QA validates structure, not values.
+
+| Field | Format (required) | Origin | Notes |
+|---|---|---|---|
+| `codigo` | Exactly as in legacy ESQL/WAS | `InvocarBancs.esql` et_bancs, `InvocarSoap.esql` et_soap, or literal from business logic | No fabrication — legacy-exact |
+| `mensaje` | Description only — NO `<NODO>-` prefix | Legacy code (strip the `<NODO>-` prefix if present; legacy format was `<NODO>-<Description>`) | Canonical source: `sqb-cfg-errores-errors/errores.xml` |
+| `mensajeNegocio` | **ALWAYS null or empty string** | DataPower (front-end of the service, not the service itself) | **Never set a real value here.** The `buildGenericError(..., mensajeNegocio, ...)` utility accepts the param only for symmetry; pass `null`. |
+| `tipo` | `INFO` / `ERROR` / `FATAL` exactly as legacy | Legacy ESQL `SET error.tipo = '...'` | See Rule 9d in the SOAP prompt for the full classification (same rules apply) |
+| `recurso` | `<NOMBRE_SERVICIO>/<MÉTODO>` (literal slash) | Build from project artifactId + operation name | Example: `tnd-msa-sp-wsclientes0024/getDatosBasicos` |
+| `componente` | See cases below (IIB-sourced services; REST targets typically are IIB-sourced) | Depends on where the error originated | See table |
+| `backend` | 5-digit code from `sqb-cfg-codigosBackend-config/codigosBackend.xml` | Injected via `BancsErrorCodesProperties` — never hardcoded as `"00000"` | Canonical IDs: `00638` IIB, `00045` BANCS, `00633` WAS, `00640` DataPower, `00632` WSO2 |
+
+**Cases for `componente` (IIB-sourced services — REST targets):**
+
+| Situation | `componente` value | Example |
+|---|---|---|
+| Error internal to the migrated microservice | `<NOMBRE_SERVICIO>` | `tnd-msa-sp-wsclientes0024` |
+| Successful response (any backend) | `<NOMBRE_SERVICIO>` | `tnd-msa-sp-wsclientes0024` |
+| Error propagated from a library (e.g., `lib-bnc-api-client`) | `<LIBRERIA>` | `ApiClient` |
+| Controlled business error propagated from ApiClient | `TX<CÓDIGO>` (6-digit TX, prefixed `TX`) | `TX060480` |
+
+**WAS-sourced services have a different `componente` format** — if this REST service is migrated from a WAS legacy, check the SOAP prompt Rule 9f for the WAS-specific table (rare case, since 1-op WAS+DB goes to SOAP, but 1-op WAS without DB lands here).
+
 ### Security and Configuration (Rules 10-13)
 
 **Rule 10 — NEVER hardcode credentials, URLs, or secrets** in code or YAMLs. Everything via `${CCC_*}` environment variables.
@@ -341,6 +366,234 @@ public record CustomerBancsDtoResponse(
 <type>[optional scope]: <description>
 ```
 Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `ci`, `perf`, `build`, `iac`
+
+---
+
+## OPTIONAL BANCO PICHINCHA LIBRARIES (WebFlux-only)
+
+Two internal libraries may be required depending on the service's capabilities. Both work only with Spring WebFlux (this prompt's stack). Do NOT use them in SOAP/MVC services.
+
+### Audit Log Reactive — `mdw-dm-lib-audit-log-reactive`
+
+**Source:** `prompts/documentacion/BPTPSRE-Librería Audit Log Reactive-*.pdf`.
+
+**Purpose:** centralized audit logging to Kafka (Confluent). Two annotations: `@LogAudit` (controllers, parent flow) and `@LogAuditStep` (services, adapters, impls — child flow).
+
+**When to add it:** when the service needs audit events published to Kafka (typical for customer-facing operations). Skip for purely internal/backend services.
+
+**Gradle dependency (latest known: `1.0.6`, verify with MCP fabrics):**
+```gradle
+implementation 'com.pichincha.lib:mdw-dm-lib-audit-log-reactive:1.0.6'
+```
+
+**Prerequisites:** Spring Boot `3.4.2+`, Java 21, WebFlux. Bail out if any of these is missing.
+
+**application.yml fragment (all Kafka values via env vars):**
+```yaml
+spring:
+  kafka:
+    properties:
+      sasl:
+        mechanism: PLAIN
+        jaas:
+          config: org.apache.kafka.common.security.plain.PlainLoginModule required username="${CCC_CONFLUENT_KEY}" password="${CCC_CONFLUENT_SECRET}"
+      bootstrap:
+        servers: ${CCC_CONFLUENT_HOST}
+      security:
+        protocol: SASL_SSL
+      session:
+        timeout.ms: 45000
+      request:
+        timeout.ms: 2000
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+logging:
+  auditor:
+    mode: EXTERNAL
+    kafka:
+      topic:
+        name: ${CCC_KAFKA_TOPIC_AUDITOR}
+    obfuscation:
+      fields: ${CCC_AUDIT_OBFUSCATE_FIELDS:}   # e.g. "password,tokenAccess"
+      enable: false
+    executor:
+      isDefault: false
+      corePoolSize: ${CCC_AUDIT_THREAD_CORE_POOL_SIZE}
+      maxPoolSize: ${CCC_AUDIT_THREAD_MAX_POOL_SIZE}
+      keepAliveTime: ${CCC_AUDIT_THREAD_KEEP_ALIVE_TIME}
+      queueSize: ${CCC_AUDIT_THREAD_QUEUE_SIZE}
+  step:
+    aspect:
+      mode: ${CCC_LOGGING_STEP_ASPECT_MODE}
+
+application:
+  cache:
+    max-size: 500
+    expire-time-minutes: 10
+
+control:
+  error:
+    trace: false
+```
+
+**Usage pattern:**
+```java
+// Controller — parent flow
+@RestController
+@RequiredArgsConstructor
+public class CreditCardController implements BusinessCapabilityApi {
+
+  private final CreditCardService creditCardService;
+
+  @Override
+  @LogAudit
+  public Mono<ResponseEntity<...>> retrieveCreditCards(...) {
+    return creditCardService.retrieveCreditCards(...)
+        .map(ResponseEntity::ok);
+  }
+}
+
+// Service impl / adapter — child step of parent flow
+@Service
+@RequiredArgsConstructor
+public class CreditCardServiceAdapter implements CreditCardService {
+
+  @Override
+  @LogAuditStep
+  public Flux<CreditCard> retrieveCreditCards(...) { ... }
+}
+```
+
+**Rules:**
+- NEVER put `@LogAudit` on a service/adapter (it is for the controller only).
+- NEVER put `@LogAuditStep` on the controller (it would duplicate the parent flow record).
+- All Kafka credentials live in `${CCC_*}` env vars — never in `application.yml` literals.
+- `logging.auditor.obfuscation.fields` must list every sensitive field name that could appear in request/response DTOs.
+
+### Stratio Connector — `mdw-dm-lib-stratio-connector`
+
+**Source:** `prompts/documentacion/BPTPSRE-Librería Stratio Connector-*.pdf`.
+
+**Purpose:** reactive client for **RDM** (Stratio's catalog REST API). Handles OAuth2 token negotiation against Cas Operacional, access-token caching in Reactive Redis, WebClient calls with Circuit Breaker (resilience4j), and pagination params (offset/limit).
+
+**When to add it:** when the ANALISIS identifies a dual-source scenario (BANCS + OCP/Stratio) or a pure-Stratio read. This replaces the previous "generic Stratio adapter" concept — use the library, don't roll your own.
+
+**Gradle dependency (latest known: `1.0.0`, verify with MCP fabrics):**
+```gradle
+implementation 'com.pichincha.dm.lib:mdw-dm-lib-stratio-connector:1.0.0'
+```
+
+**Prerequisites:** Spring Boot `3.4.2+`, Java 21, WebFlux. Reactive Redis is optional (see below).
+
+**application.yml — minimum required keys (all via env vars):**
+```yaml
+spring:
+  data:
+    redis:
+      enabled: ${CCC_REDIS_ENABLED:false}   # set true to cache access token
+      # rest of redis.* only required when enabled=true
+      ttl-data-duration: 4h
+      ttl-oauth2-duration-to-subtract: 5m
+      host: ${CCC_REDIS_HOST}
+      port: ${CCC_REDIS_PORT}
+      username: ${CCC_REDIS_USER}
+      password: ${CCC_REDIS_PASSWORD}
+      # ssl, lettuce, timeouts, etc. — see PDF table 2.1 for full schema
+  security:
+    oauth2:
+      client:
+        registration:
+          oauth2-pichincha-client:
+            client-id: ${CCC_OAUTH2_CLIENT_ID}
+            client-secret: ${CCC_OAUTH2_CLIENT_SECRET}
+            client-name: ${spring.application.name}   # must be unique per microservice
+        provider:
+          oauth2-pichincha-provider:
+            token-uri: ${CCC_CAS_TOKEN_URI}
+      clock-skew: 1m
+      scheduling:
+        clock-skew: 4h
+
+webclient:
+  connection-timeout: 200
+  read-timeout: 200ms
+  max-connections: -1
+  pending-acquire-max-count: -1
+  stratio:
+    base-url: ${CCC_STRATIO_BASE_URL}
+
+scheduling:
+  access-token:
+    fixed-rate: 7200         # seconds between token refresh checks
+    initial-delay: 10
+
+web-filter:
+  trace-id-header-name: x-guid
+
+stratio-pager:
+  offset-param-name: offset
+  limit-param-name: limit
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      stratio:
+        failure-rate-threshold: 1
+        wait-duration-in-open-state: 1s
+        permitted-number-of-calls-in-half-open-state: 5
+        sliding-window-size: 10
+        slow-call-rate-threshold: 1
+        slow-call-duration-threshold: 300ms
+        record-exceptions:
+          - java.io.IOException
+          - io.netty.handler.timeout.ReadTimeoutException
+          - org.springframework.web.reactive.function.client.WebClientResponseException
+          - org.springframework.web.reactive.function.client.WebClientRequestException
+```
+
+**Usage pattern — adapter injects `StratioQueryExecutor<T>`:**
+```java
+@Component
+public class AccountDetailAdapter implements AccountDetailPort {
+
+  private final StratioQueryExecutor<AccountDetail> stratioQueryExecutor;
+
+  public AccountDetailAdapter(StratioQueryExecutor<AccountDetail> stratioQueryExecutor) {
+    this.stratioQueryExecutor = stratioQueryExecutor;
+  }
+
+  // GET example
+  @Override
+  public Flux<AccountDetail> retrieveAccountDetail(String partyId) {
+    var queryParams = new LinkedMultiValueMap<String, String>();
+    queryParams.add("partyId", partyId);
+    return stratioQueryExecutor.retrieveFlux(
+        StratioQuery.newGetMethodInstance("/some/path", queryParams),
+        AccountDetail.class);
+  }
+
+  // POST example
+  public Mono<AccountDetail> createAccountDetail(String name) {
+    return stratioQueryExecutor.retrieveMono(
+        StratioQuery.newPostMethodInstance("/some/path", new SomeObject(name)),
+        AccountDetail.class);
+  }
+}
+```
+
+**Exceptions thrown by `retrieveMono` / `retrieveFlux`:**
+- `ResponseStatusException(503 SERVICE_UNAVAILABLE)` when the Circuit Breaker is OPEN
+- `OAuth2AuthorizationException` when Cas Operacional returns an invalid access token
+
+Map these in `ErrorResolverHandler` to the official `<error>` structure (Rule 9d) — do NOT let them leak raw.
+
+**Rules:**
+- NEVER hand-roll a Stratio client if this library applies — use it.
+- NEVER put the Redis password, OAuth2 client-secret, or Kafka secret in `application.yml` literally.
+- `client-name` MUST be unique per microservice (it's used as Redis cache key for the token).
+- If `spring.data.redis.enabled=false`, all remaining `spring.data.redis.*` keys are ignored by the library — they can be omitted.
 
 ---
 
@@ -1247,13 +1500,24 @@ public class SoapResponseHelper {
         return headerOut;
     }
 
+    /**
+     * Build the canonical {@code <error>} payload.
+     *
+     * IMPORTANT: the {@code mensajeNegocio} parameter MUST always be passed as
+     * {@code null} or empty string. This field is the "business-friendly"
+     * message shown to end users, and it is populated by DataPower in front of
+     * the microservice — NEVER by the service itself. The parameter exists
+     * only to keep the builder symmetric with {@code GenericError}.
+     * Source: "BPTPSRE — Estructura de error" (pag. 2: "Mensaje de negocio es
+     * gestionado a nivel de DataPower").
+     */
     public static GenericError buildGenericError(
         String codigo, String mensaje,
         String mensajeNegocio, String tipo) {
         GenericError error = new GenericError();
         error.setCodigo(codigo);
         error.setMensaje(mensaje);
-        error.setMensajeNegocio(mensajeNegocio);
+        error.setMensajeNegocio(mensajeNegocio);   // expected: null or ""
         error.setTipo(tipo);
         error.setRecurso(CatalogExceptionConstants.WS_RECURSO);
         error.setComponente(CatalogExceptionConstants.WS_COMPONENTE);

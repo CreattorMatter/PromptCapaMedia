@@ -1256,6 +1256,138 @@ Si hay match -> **HIGH** (CRITICAL). Acción: rotar el token en SonarCloud inmed
 
 ---
 
+## BLOQUE 15 — Estructura de error oficial y librerías opcionales
+
+**Origen:** [PDF-OFICIAL] `BPTPSRE-Estructura de error`, `BPTPSRE-Archivos de configuración`, `BPTPSRE-Servicios Configurables`, `BPTPSRE-Librería Audit Log Reactive`, `BPTPSRE-Librería Stratio Connector`.
+
+Este bloque NO es redundante con el BLOQUE 5 (que cubre propagación de errores Bancs). Cubre la **forma** de los 8 campos del `<error>` según el PDF oficial + la presencia correcta de las 2 librerías internas opcionales.
+
+### Check 15.1 — `error.recurso` respeta el formato `<SERVICIO>/<MÉTODO>`
+
+```bash
+# Buscar asignaciones / setters de recurso y ver que contengan "/"
+grep -rnE "setRecurso\(|RECURSO\s*=" <PATH>/src/main/java/ \
+  | grep -vE "//|\\*" \
+  | head -20
+```
+
+**Veredicto:** para cada match, el string literal debe contener `/` y empezar con el `spring.application.name` del servicio (ej: `tnd-msa-sp-wsclientes0024/getDatosBasicos`). Si hay un `setRecurso(...)` con string sin `/`, o que no empieza con el artifactId → **HIGH**.
+
+### Check 15.2 — `error.componente` sigue estructura oficial
+
+El formato depende del tipo de legacy (IIB vs WAS). Consultar `ANALISIS_<ServiceName>.md` para saber cuál aplica.
+
+**Casos IIB (mayoría):**
+
+```bash
+# Listar todos los valores literal que se asignan a componente
+grep -rnE "setComponente\(\"[^\"]+\"|COMPONENTE\s*=\s*\"[^\"]+" <PATH>/src/main/java/
+```
+
+Cada valor debe matchear uno de:
+- El `spring.application.name` (ej: `tnd-msa-sp-wsclientes0024`) — caso servicio interno / respuesta exitosa
+- `ApiClient` (o nombre de librería exacto) — caso error propagado desde librería
+- `TX\d{6}` (prefijo `TX` + 6 dígitos) — caso error de negocio desde ApiClient
+
+Cualquier otro literal → **MEDIUM** (revisar caso a caso).
+
+**Casos WAS (menos común):** valor debe matchear el nombre del método legacy, el `<NOMBRE_SERVICIO>`, o un valor literal de un `.properties` legacy. Si el origen no es rastreable → **MEDIUM**.
+
+### Check 15.3 — `error.mensajeNegocio` NUNCA se setea con valor real
+
+DataPower gestiona este campo en frente del microservicio. El servicio debe pasarlo como `null` o `""`.
+
+```bash
+# Buscar setters con string literal no vacío
+grep -rnE "setMensajeNegocio\(\"[^\"]+\"\)" <PATH>/src/main/java/
+```
+
+0 matches esperado → ✅ **PASS**. Cualquier match con contenido real → **HIGH** (DataPower va a sobreescribir pero mejor no enviar ruido). Excepción aceptada: `setMensajeNegocio(null)` o `setMensajeNegocio("")` son válidos (pasan el pipe builder por simetría).
+
+### Check 15.4 — `error.mensaje` sin prefijo `<NODO>-`
+
+```bash
+# Buscar mensajes con patrón "NODO-..." al principio
+grep -rnE "setMensaje\(\"[A-Z][A-Z_0-9]+-" <PATH>/src/main/java/
+```
+
+Si hay match (ej: `setMensaje("IIB-algo...")`, `setMensaje("WS0024-...")`) → **MEDIUM**. Acción: strippear el prefijo, dejar solo la descripción. QA valida solo descripción, no nodo.
+
+### Check 15.5 — `error.backend` no es `"00000"` literal
+
+Ya cubierto por **Check 5.4**. Aquí solo referencia cruzada: no duplicar el check, pero si 5.4 falla este bloque lo hereda como pendiente.
+
+### Check 15.6 — Audit Log Reactive: si está, está completa
+
+```bash
+# ¿La librería está declarada?
+grep -E "mdw-dm-lib-audit-log-reactive" <PATH>/build.gradle
+```
+
+Si **no** está → saltar 15.6 (servicio no la usa — OK).
+
+Si **sí** está:
+
+```bash
+# Controllers deben tener @LogAudit
+grep -L "@LogAudit" <PATH>/src/main/java/com/pichincha/sp/infrastructure/input/adapter/rest/*Controller.java
+
+# Services/adapters deben tener @LogAuditStep (no @LogAudit)
+grep -rL "@LogAuditStep" <PATH>/src/main/java/com/pichincha/sp/application/service/
+grep -rn "@LogAudit\b" <PATH>/src/main/java/com/pichincha/sp/application/service/
+
+# Kafka credentials via env vars, no literales
+grep -A2 "jaas:" <PATH>/src/main/resources/application.yml | grep -E "username=\"[^\$]"
+```
+
+**Veredicto:**
+- Controller sin `@LogAudit` → **HIGH**
+- Service/adapter con `@LogAudit` (debía ser `@LogAuditStep`) → **HIGH**
+- Service/adapter sin `@LogAuditStep` → **MEDIUM**
+- Kafka `username`/`password` literales en yml → **HIGH** (deben ser `${CCC_*}`)
+
+### Check 15.7 — Stratio Connector: si está, está completa
+
+```bash
+grep -E "mdw-dm-lib-stratio-connector" <PATH>/build.gradle
+```
+
+Si **no** está → saltar 15.7.
+
+Si **sí** está:
+
+```bash
+# Los adapters deben inyectar StratioQueryExecutor, no hand-rolled clients
+grep -rn "StratioQueryExecutor" <PATH>/src/main/java/com/pichincha/sp/infrastructure/output/adapter/
+
+# OAuth2 client-name debe ser unique (typically = spring.application.name)
+grep -A1 "client-name:" <PATH>/src/main/resources/application.yml
+
+# URL de Stratio y OAuth2 via env var
+grep -E "stratio:\s*$|token-uri:|base-url:" <PATH>/src/main/resources/application.yml
+```
+
+**Veredicto:**
+- Adapter Stratio sin inyectar `StratioQueryExecutor` (hand-rolled WebClient) → **HIGH**
+- `client-name` hardcodeado distinto del artifactId del servicio → **MEDIUM**
+- `stratio.base-url` o `token-uri` literales (no `${CCC_*}`) → **HIGH**
+- Si `spring.data.redis.enabled=true` pero falta `host`/`port` → **HIGH**
+
+### Check 15.8 — XMLs de configuración IIB: si aplica, inyectados como `@ConfigurationProperties`
+
+Si el ANALISIS reportó uso de `GestionarRecursoXML` en legacy:
+
+```bash
+# Buscar @ConfigurationProperties que mapee el XML (no debe leer XML en runtime)
+grep -rn "@ConfigurationProperties" <PATH>/src/main/java/com/pichincha/sp/infrastructure/config/
+```
+
+**Veredicto:**
+- Si el servicio migrado sigue leyendo `.xml` de disco con `XmlMapper`/`DocumentBuilder` en runtime → **HIGH**. Acción: migrar el contenido del XML a `application.yml` o ConfigMap, binding vía `@ConfigurationProperties`.
+- Si no hay trace de XML loading en el migrado → ✅ **PASS** (probablemente ya se migró a properties).
+
+---
+
 ## FORMATO DEL REPORTE
 
 Generás el reporte en este formato, en el orden de los bloques. Para cada check: emoji de estado + descripción corta + detalles si FAIL.

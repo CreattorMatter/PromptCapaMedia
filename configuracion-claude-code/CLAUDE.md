@@ -20,6 +20,21 @@ La presencia de BD se maneja dentro del prompt elegido (HikariCP+JPA agregado al
 
 **SonarLint local:** todo proyecto migrado debe tener `.sonarlint/connectedMode.json` versionado apuntando a la organización `bancopichinchaec` en SonarCloud. Setup detallado en `configuracion-claude-code/sonarlint/README.md`. Validado por la checklist post-migración (BLOQUE 14).
 
+**Estructura de error oficial (PDF BPTPSRE):** el bloque `<error>` tiene 8 campos. `mensajeNegocio` lo setea DataPower (NUNCA el servicio — pasar null). `recurso` = `<artifactId>/<método>`. `componente` tiene reglas diferentes para IIB (`<SERVICIO>` / `ApiClient` / `TX\d{6}`) vs WAS (`<SERVICIO>` / `<MÉTODO>` / `<VALOR_ARCHIVO_CONFIG>`). Validado por checklist BLOQUE 15.
+
+**Librerías internas opcionales (solo WebFlux/REST):**
+- `mdw-dm-lib-audit-log-reactive` — auditoría vía Kafka; anotaciones `@LogAudit` (controller) y `@LogAuditStep` (service/adapter).
+- `mdw-dm-lib-stratio-connector` — cliente reactivo contra RDM (Stratio); `StratioQueryExecutor.retrieveMono/Flux`; OAuth2 Cas Operacional + opcional Redis para cache de token.
+- Ambas requieren Spring Boot 3.4.2+ y están descritas en detalle en el prompt REST.
+
+**Patrones legacy IIB de configuración:**
+- `GestionarRecursoXML('carpeta', 'archivo', ...)` → archivos XML en repos `sqb-cfg-<archivo>-<carpeta>` (ej: `sqb-cfg-codigosBackend-config`, `sqb-cfg-errores-errors`) — ya commiteados en este repo.
+- `GestionarRecursoConfigurable('OmniServiceConfig', ...)` → servicios configurables cacheados en `Environment.cache.<Name>`; fuente XLSX en SharePoint (no accesible — marcar como TBD).
+
+**Patrones legacy WAS de configuración:**
+- Properties: `/apps/proy/OMNICANALIDAD_SERVICIOS/conf/{<servicio>,generalServices,CatalogoAplicaciones}.properties`
+- Clases Java a inspeccionar: `Propiedad.java` (reader), `ErrorTipo.java` (enum tipo), `ServicioExcepcion` (origen de componente)
+
 ## Build & Test
 ```bash
 # bloque_estricto_a_copiar

@@ -279,6 +279,58 @@ Scan the project for evidence of database usage:
 
 **Expected output:** A table of accessed tables / stored procs, plus an explicit `DB_USAGE: YES | NO` flag for downstream reference.
 
+### Step E.3: IIB configuration patterns (only if source type is IIB)
+
+Banco Pichincha's IIB uses two explicit helpers for config lookup. Scan the ESQL for both and list them separately:
+
+1. **`GestionarRecursoXML`** — loads XML config files from Azure DevOps repos (naming: `sqb-cfg-<file>-<folder>`, e.g. `sqb-cfg-codigosBackend-config`, `sqb-cfg-errores-errors`).
+   ```esql
+   CALL com.bpichincha.esb.generico.recursos.GestionarRecursoXML('config', 'codigosBackend', ...)
+   ```
+   For each invocation: folder arg, file arg, and where the result is consumed.
+
+2. **`GestionarRecursoConfigurable`** — loads **Servicios Configurables** (cached key/value properties) into `Environment.cache.<ConfigName>`. Source is the SharePoint XLSX `ConfigurablesBusOmniTest_Transfor.xlsx` (not in Azure DevOps — often inaccessible during analysis).
+   ```esql
+   CALL com.bpichincha.esb.generico.recursos.GestionarRecursoConfigurable('OmniServiceConfig', configurable);
+   DECLARE configurable REFERENCE TO Environment.cache.OmniServiceConfig;
+   ```
+   For each configurable: name, fields read from `Environment.cache.<Name>.*`. Mark values as `TBD (SharePoint XLSX not accessed)` unless the dev provides the sheet.
+
+3. **Error helper ESQLs** — mandatory scan of two specific files if they exist in the legacy tree:
+   - `InvocarBancs.esql` — builds `et_bancs` error tuples (code, message, type, backend) for Bancs calls
+   - `InvocarSoap.esql` — builds `et_soap` error tuples for external SOAP calls
+   - Extract: every `error.codigo`, `error.mensaje`, `error.tipo`, `error.backend` and the conditions that produce them. This feeds directly into the migration's error catalog and the BLOQUE 5/15 of the checklist.
+
+**Expected output:** Three tables — XML configs used, Configurables used, and the et_bancs/et_soap matrix.
+
+### Step E.4: WAS configuration patterns (only if source type is WAS)
+
+WAS uses `.properties` files under a fixed path. Scan for all three types:
+
+| File | Location | Purpose |
+|---|---|---|
+| Per-service properties | `/apps/proy/OMNICANALIDAD_SERVICIOS/conf/<nombre_servicio>.properties` | Service-specific config |
+| General services | `/apps/proy/OMNICANALIDAD_SERVICIOS/conf/generalServices.properties` | Cross-service shared config |
+| Application catalog | `/apps/proy/OMNICANALIDAD_SERVICIOS/conf/CatalogoAplicaciones.properties` | App registry lookup |
+
+Reader class: **`Propiedad.java`** — look for `Propiedad.get(...)` invocations and list every property key read, grouped by which of the three files it belongs to.
+
+Error-related WAS classes (mandatory to inspect if errors are in scope):
+- **`ErrorTipo.java`** — enumeration of `tipo` values used by the service (INFO / ERROR / FATAL)
+- **`ServicioExcepcion`** — wrapping exception; scan its `new ServicioExcepcion(...)` call sites to determine the `componente` value propagated (typically a UMP name or a library name)
+
+**Expected output:** Properties table (key, file, where it's consumed) + `ErrorTipo` values found + `ServicioExcepcion` call sites.
+
+### Step E.5: TX → Adapter lookup sources
+
+Two authoritative sources cross-reference each BANCS TX code to its Core Adapter. Both are under `prompts/`:
+
+1. **`prompts/tx-adapter-catalog.json`** (JSON array) — canonical for the `/migrar` step. Each entry: `tx`, `tipo` (TX/RX), `dominio`, `capacidad`, `tribu`, `adaptador`. Use this to fill the TX Summary Table (Section 5.1).
+
+2. **`prompts/Transacciones catalogadas Dominio_v1 (1).xlsx`** — human-readable source used by the domain/tribe team. If a TX is NOT in the JSON but IS in the XLSX, flag as `CATALOG_MISMATCH` so the JSON gets updated.
+
+**Expected output:** The TX Summary Table must populate `Core Adapter` column from the JSON. Note in "Uncertainties" any TX whose adapter was not found in either source.
+
 ### Step F: Parse deploy configuration (deploy-*-config.bat)
 
 For each `deploy-*-config.bat` file found (typically dev, test, prod):

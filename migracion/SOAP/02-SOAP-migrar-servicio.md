@@ -491,6 +491,41 @@ public class HeaderRequestValidator {
 - El Controller inyecta `HeaderRequestValidator` por constructor (deja de usar llamada estática `HeaderRequestValidator.validate(...)`).
 - Los tests instancian el validator manualmente: `new HeaderRequestValidator(new HeaderValidationProperties())`.
 
+### Error Structure -- Official Layout (Rule 9f)
+
+**Source:** `prompts/documentacion/BPTPSRE-Estructura de error-*.pdf`. Every `<error>` payload returned by the service MUST have these fields with these formats. QA validates structure, not values.
+
+| Field | Format (required) | Origin | Notes |
+|---|---|---|---|
+| `codigo` | Exactly as in legacy ESQL/WAS | `InvocarBancs.esql` et_bancs, `InvocarSoap.esql` et_soap, or literal from business logic | No fabrication -- legacy-exact |
+| `mensaje` | Description only -- NO `<NODO>-` prefix | Legacy code (strip the `<NODO>-` prefix if present; legacy format was `<NODO>-<Description>`) | Canonical source: `sqb-cfg-errores-errors/errores.xml` |
+| `mensajeNegocio` | **ALWAYS null or empty string** | DataPower (front-end of the service, not the service itself) | **Never set a real value here.** Any helper method that accepts this parameter must receive `null` at the call site. |
+| `tipo` | `INFO` / `ERROR` / `FATAL` exactly as legacy | Legacy ESQL `SET error.tipo = '...'` | Full classification already in Rule 9d above |
+| `recurso` | `<NOMBRE_SERVICIO>/<MÉTODO>` (literal slash) | Build from project artifactId + operation name | Example: `tnd-msa-sp-wsclientes0015/ConsultarDireccionesCliente01` |
+| `componente` | See cases below -- **IIB and WAS have DIFFERENT formats** | Depends on source type and origin of the error | Critical for QA |
+| `backend` | 5-digit code from `sqb-cfg-codigosBackend-config/codigosBackend.xml` | Injected via `BancsErrorCodesProperties` -- never hardcoded as `"00000"` | Already covered by Rule 9c above |
+
+**Cases for `componente` -- IIB-sourced services:**
+
+| Situation | `componente` value | Example |
+|---|---|---|
+| Error internal to the migrated microservice | `<NOMBRE_SERVICIO>` | `tnd-msa-sp-wsclientes0015` |
+| Successful response (any backend) | `<NOMBRE_SERVICIO>` | `tnd-msa-sp-wsclientes0015` |
+| Error propagated from a library (e.g., `lib-bnc-api-client`) | `<LIBRERIA>` | `ApiClient` |
+| Controlled business error propagated from ApiClient | `TX<CÓDIGO>` (6-digit, `TX` prefix) | `TX060480` |
+
+**Cases for `componente` -- WAS-sourced services (DIFFERENT structure):**
+
+WAS services use the 3-part structure `<NOMBRE_SERVICIO>, <NOMBRE_MÉTODO>, <VALOR ARCHIVO CONFIGURACIÓN>`:
+
+| Situation | `componente` value | Example |
+|---|---|---|
+| Value taken directly from the WAS config file (migrated method name matches legacy method name) | `<VALOR ARCHIVO DE CONFIGURACIÓN>` | `Base de datos Omnicanal` (from `CatalogoAplicaciones.properties`) |
+| Error at the migrated service level | `<NOMBRE_SERVICIO>` | `tia-msa-sp-wstecnicos0004` |
+| Successful response at the migrated service level | `<NOMBRE_MÉTODO>` | `getConsultaDatosBasicos` |
+
+**How to choose between IIB-table and WAS-table:** check `source_type` in `ANALISIS_<ServiceName>.md`. If IIB, apply the IIB table. If WAS, apply the WAS table.
+
 ### Security and Configuration (Rules 10-13)
 
 **Rule 10 -- NEVER hardcode credentials, URLs, or secrets** in code or YAMLs. Everything via `${CCC_*}` environment variables.
