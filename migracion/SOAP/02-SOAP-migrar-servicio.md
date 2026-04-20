@@ -363,7 +363,7 @@ void givenMissingBancsHeader_whenConsultar_thenReturnsFatal() {
 - [`0010-WSR/.../ConsultarSeguridadNoFinanciero01.esql:585`](../../0010-WSR/legacy/_repo/com/bpichincha/esb/wsreglas0010/ConsultarSeguridadNoFinanciero01.esql:585) — `SET error.tipo = 'INFO'` para success
 - [`0010-WSR/ANALISIS_WSReglas0010.md:432`](../../0010-WSR/ANALISIS_WSReglas0010.md:432) — SOAP Fault / excepción IIB → `tipo='FATAL'`, triggerea contingencia
 
-**Violación común del gold standard:** los golds 0024/0013/0006 mezclan ERROR y FATAL o no distinguen. wsclientes0007 post-fix 2026-04-16 es el primero que aplica esta clasificación correctamente.
+**Violación común del gold standard:** los golds 0024/0013/0006 mezclan ERROR y FATAL o no distinguen. wsclientes0007 (post-fix) es el primero que aplica esta clasificación correctamente.
 
 **Validación rápida:**
 ```bash
@@ -424,7 +424,7 @@ log.info("Basic info retrieved for CIF: {}", basicInfo.cif());
 log.debug("Basic info retrieved for CIF: {}", basicInfo.cif());
 ```
 
-**Feedback:** Jonathan Arana / Alexis 2026-04-17 — *"Ese log si no aporta valor para los ambientes de test y prod, solo para desarrollo que se lo coloque en debug"*.
+**Feedback del equipo [FB-JA]:** *"Ese log si no aporta valor para los ambientes de test y prod, solo para desarrollo que se lo coloque en debug"*.
 
 **Regla de mano:**
 - `log.info`: eventos de contrato — start/end de operación de negocio, success de TX Bancs con efecto colateral.
@@ -446,7 +446,7 @@ public final class HeaderRequestValidator {
 }
 ```
 
-**Patrón correcto (wsclientes0007 post-fix 2026-04-17):**
+**Patrón correcto (wsclientes0007 post-fix):**
 ```java
 // infrastructure/config/HeaderValidationProperties.java
 @ConfigurationProperties(prefix = "header-validation.patterns")
@@ -485,7 +485,7 @@ public class HeaderRequestValidator {
 #   HEADER_VALIDATION_PATTERNS_ALPHANUMERIC_DASH
 ```
 
-**Feedback:** Jonathan Arana / Alexis 2026-04-17 — *"se había recomendado que se coloque en variables de entorno para poder cambiar en su momento sin tener que modificar el código mediante infraestructura con configmaps de OpenShift"*.
+**Feedback del equipo [FB-JA]:** *"se había recomendado que se coloque en variables de entorno para poder cambiar en su momento sin tener que modificar el código mediante infraestructura con configmaps de OpenShift"*.
 
 **Consecuencias:**
 - El Controller inyecta `HeaderRequestValidator` por constructor (deja de usar llamada estática `HeaderRequestValidator.validate(...)`).
@@ -718,9 +718,9 @@ Before invoking `create_project_with_wsdl`, run this preflight:
    If unsure, pause and have them reinstall/update before continuing.
 
 3. Skim the MCP tool schema description for any new parameters or defaults
-   that changed since the version this prompt was written against (v1.2.0,
-   2026-04-17). If the schema shows parameters not documented below,
-   ask the user how to handle them.
+   that changed since the version this prompt was written against (v1.2.0).
+   If the schema shows parameters not documented below, ask the user how
+   to handle them.
 ```
 
 Document the MCP version used in `migration-context.json` under `scaffolding.mcp_version` so future audits can trace which MCP generated which project.
@@ -742,7 +742,7 @@ Parameters:
 
 ##### 1.0.3 Known MCP gaps — compensate manually if still present
 
-**MCP v ≤ 2026-04-10 gaps (verify if still apply in your version):**
+**MCP gaps observados en versiones recientes (verificá si siguen aplicando en tu versión):**
 
 1. **`spring-boot-starter-webflux` NOT included in SOAP scaffold** even when `webFramework: webflux` is passed.
    - **Symptom:** generated `build.gradle` only has `spring-boot-starter-web-services` + `spring-boot-starter-undertow` → project arranca como servlet puro, sin `WebClient` reactive.
@@ -946,7 +946,7 @@ tasks.named('compileJava') {
 
    **Rule: The Groovy script is a shared asset. Copy it exactly from the reference project and do NOT edit it. If it needs changes, that is a separate task for the framework team.**
 
-   **FORBIDDEN pattern -- do NOT re-introduce:** previous versions of this script included a `decapitalize()` step plus an `injectXmlRootElement()` that rewrote the root element name to camelCase (e.g., `ConsultarXxx01` -> `consultarXxx01`). This was **wrong** and was reverted in `wsclientes0007` commit `bf913b9` (2026-04-14). The XSD defines the element in PascalCase; the groovy must NOT fight that. If you copy from an older reference, verify the script has no `decapitalize`, no `updatePackageInfo` that rewrites namespaces, and no `injectXmlRootElement` logic.
+   **FORBIDDEN pattern -- do NOT re-introduce:** previous versions of this script included a `decapitalize()` step plus an `injectXmlRootElement()` that rewrote the root element name to camelCase (e.g., `ConsultarXxx01` -> `consultarXxx01`). This was **wrong** and was reverted in `wsclientes0007` commit `bf913b9` (ver Historial). The XSD defines the element in PascalCase; the groovy must NOT fight that. If you copy from an older reference, verify the script has no `decapitalize`, no `updatePackageInfo` that rewrites namespaces, and no `injectXmlRootElement` logic.
 
 6. **Create `gradle/wrapper/jaxb-bindings.xml`** (MANDATORY -- build fails without this):
 ```xml
@@ -1562,7 +1562,7 @@ Rule of thumb:
 - **XML wire / `@PayloadRoot.localPart` / xpath `local-name()` in tests / JAXB class name** = PascalCase (from XSD).
 - **Java method name** = camelCase (Java convention).
 
-Reference: fix commit `bf913b9` in `tnd-msa-sp-wsclientes0007` (2026-04-14) -- reverted an earlier over-simplification that decapitalized the element to match a manipulated groovy output. The correct source of truth is the XSD, not the generated Java output after post-processing.
+Reference: fix commit `bf913b9` in `tnd-msa-sp-wsclientes0007` -- reverted an earlier over-simplification that decapitalized the element to match a manipulated groovy output. The correct source of truth is the XSD, not the generated Java output after post-processing.
 
 **Critical error rule:** Errors are NEVER SOAP faults. All errors -- validation, BANCS, unexpected -- are returned as valid SOAP responses with an `<error>` block containing tipo='ERROR'. The service always returns HTTP 200.
 
@@ -3039,3 +3039,25 @@ Maintain throughout the entire execution. Write to `NO_VERIFICABLE_LOCAL.md` upo
 ```
 
 This file becomes input for Phase 3 (verification and deployment).
+
+---
+
+## Historial de decisiones (contexto de las reglas)
+
+Este historial documenta las decisiones clave que motivan reglas específicas de este prompt. Los detalles del servicio-ancla `wsclientes0007` aparecen porque fue el primero en aplicar cada corrección antes de que se consolidaran como regla.
+
+| Fecha | Servicio / commit | Decisión que afecta a este prompt |
+|---|---|---|
+| 2026-04-14 | `bf913b9` (wsclientes0007) | **`postProcessWsdl.groovy` sin `decapitalize` ni `injectXmlRootElement`** — la fuente de verdad es el XSD en PascalCase; el Groovy no debe reescribir el root element. Reglas: Block 1 scaffolding + naming. |
+| 2026-04-16 | `bbcc62a` (wsclientes0007) | **`error.tipo = FATAL`** para header-missing + Bancs + Exception genérica. Antes solo INFO/ERROR. Mensaje canónico `"Datos de la cabecera de la transaccion no se han asignado"` (error 9927 del catálogo `errores.xml`). Reglas: 9d + Rule 9b. |
+| 2026-04-16 | wsclientes0007 post-audit | **`error.backend` desde el catálogo oficial** `sqb-cfg-codigosBackend-config/codigosBackend.xml`, nunca hardcodeado como `"00000"`. Regla: 9c. |
+| 2026-04-17 | wsclientes0007 post-fix | **`log.info` reservado para eventos de contrato; diagnóstico a `log.debug`.** Origen: feedback del equipo [FB-JA]. Regla: 9e.1. |
+| 2026-04-17 | wsclientes0007 post-fix | **`HeaderRequestValidator` como `@Component` con `@ConfigurationProperties`** (`HeaderValidationProperties`), patterns vía ConfigMap de OpenShift. Validator deja de ser `final class` estática. Origen: feedback del equipo [FB-JA]. Regla: 9e.2. |
+| 2026-04-18 | Matriz oficial formalizada | **Este prompt es SOAP = 2+ operaciones, o cualquier WAS con DB.** 1 op va a REST/WebFlux. La matriz es estricta por cantidad de operaciones; BD es tecnología agregada (HikariCP+JPA en MVC), no criterio de ruteo. |
+| 2026-04-20 | BPTPSRE PDFs incorporados | **Rule 4.1** — WAS + DB usa HikariCP+JPA+Oracle bajo Spring MVC (NUNCA WebFlux). **Rule 9f** — estructura oficial de error con 8 campos (`mensajeNegocio` = DataPower). Tabla `componente` distinta para IIB vs WAS (3-part en WAS). |
+
+**Golds citados como referencia o anti-patrón:**
+- `tnd-msa-sp-wsclientes0015` — gold SOAP; hueco conocido: 3 ports Bancs separados (hay que unificar a 1), `log.info` excesivo, mezcla ERROR/FATAL.
+- `tnd-msa-sp-wsclientes0024` — gold REST (referencia estable); hueco conocido: `error.backend` hardcodeado `"00000"` y mezcla ERROR/FATAL.
+- `tnd-msa-sp-wsclientes0013/0006` — mismos huecos que 0024 en `error.backend` y `error.tipo`.
+- `tnd-msa-sp-wsclientes0007` — servicio-ancla de post-fixes (no es gold formal; es mal-clasificado histórico porque tiene 1 op migrado como SOAP).

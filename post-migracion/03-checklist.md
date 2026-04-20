@@ -8,7 +8,7 @@ Sos un auditor de código que revisa un microservicio Java Spring Boot ya migrad
 
 ## CUÁNDO SE USA
 
-Después de correr el prompt de migración (`02-migrar-servicio.md`) y antes de abrir PR. También sirve para auditar servicios que ya están en `develop` antes de pasar a `release`.
+Después de correr el prompt de migración (`migracion/REST/02-REST-migrar-servicio.md` o `migracion/SOAP/02-SOAP-migrar-servicio.md` según el proyecto) y antes de abrir PR. También sirve para auditar servicios que ya están en `develop` antes de pasar a `release`.
 
 ## INPUT
 
@@ -23,8 +23,9 @@ Si no se pasa el segundo argumento, el BLOQUE 0 degrada a "solo cuenta en el WSD
 
 Cada bloque referencia su origen para que el lector sepa de dónde viene:
 
-- **[PDF-OFICIAL]** — `prompts/documentacion/BPTPSRE-CheckList Desarrollo-140426-212740.pdf` (documento oficial del área)
-- **[FB-JG]** — Feedback de Jean Pierre García (Slack, múltiples fechas)
+- **[PDF-OFICIAL]** — PDFs del área BPTPSRE bajo `prompts/documentacion/` (documentos oficiales)
+- **[FB-JG]** — Feedback del tech lead del equipo BPTPSRE (canal Slack interno)
+- **[FB-JA]** — Feedback de desarrolladores del equipo BPTPSRE (canal Slack interno)
 - **[COMMIT-XXXXX]** — Commit específico del repo de referencia
 - **[MCP]** — Confluence del MCP fabrics (versiones de librerías)
 
@@ -46,7 +47,7 @@ grep -rl "@RestController" <PATH>/src/main/java
 
 **Decisión:**
 - Hay `@Endpoint` → **SOAP** (gold standard: `tnd-msa-sp-wsclientes0015`)
-- Hay `@RestController` y no `@Endpoint` → **REST** (gold standard: `tnd-msa-sp-wsclientes0024`, FROZEN 2026-04-14)
+- Hay `@RestController` y no `@Endpoint` → **REST** (gold standard: `tnd-msa-sp-wsclientes0024`, referencia estable)
 - Ambos o ninguno → **FAIL HIGH** (proyecto malformado)
 
 ### Check 0.2 — Conteo de operaciones: legacy ↔ migrado ↔ framework
@@ -113,7 +114,7 @@ Veredicto final: <PASS | HIGH mal-clasificado | etc.>
 - 2+ ops legacy + tipo REST → **HIGH** (mal-clasificado). Diálogo: *"Son N ops → REST+WebFlux no soporta dispatching multi-operation, necesita Spring WS sobre MVC."*
 - 1 op + tipo REST + `DB_USAGE: YES` → ✅ **PASS con flag** `ATTENTION_NEEDED_REST_WITH_DB`. Diálogo: *"Es 1 op con BD → queda en REST. ¿Usaste R2DBC o blocking boundary? Confirmá el approach con el equipo."*
 
-**Hallazgo documentado:** wsclientes0007 tiene 1 op y está migrado como SOAP (ver [memoria mis-classification](../../.claude/projects/C--Dev-Banco-Pichincha-CapaMedia/memory/reference_mcp_fabrics_gaps.md)). Es **caso mal-clasificado que NO se reclasifica ahora** por costo vs beneficio (ya está funcionando, pasa checklist, build verde). Los futuros servicios con 1 op deben usar el prompt REST (sin importar si tienen BD — la matriz es estricta por cantidad de operaciones).
+**Hallazgo documentado (caso histórico):** wsclientes0007 tiene 1 op y está migrado como SOAP — caso **mal-clasificado** previo a la formalización de la matriz. No se reclasifica por costo vs beneficio (ya funciona, pasa checklist, build verde). Los futuros servicios con 1 op deben usar el prompt REST, sin importar si tienen BD — la matriz es estricta por cantidad de operaciones. Detalles en el **Historial de decisiones** al final de este documento.
 
 **Guardar en el contexto del reporte:** `projectType`, `goldStandard`, `opsLegacy`, `opsMigrated`, `opsMatch`, `expectedFramework`, `actualFramework`, `frameworkMatch`.
 
@@ -309,7 +310,7 @@ grep -rnE "log\.info\(\"(Basic|Retrieved|Starting|Processing|Got|Found|Mapping|N
 
 Cualquier match → **MEDIUM**. Revisar si son eventos de contrato o diagnóstico. Si es diagnóstico → pasar a `log.debug` (ServiceLogHelper ya lo soporta).
 
-**Referencia:** feedback Jonathan Arana / Alexis 2026-04-17 sobre wsclientes0007 (`log.info("Basic info retrieved for CIF: {}", ...)` bajado a debug en commit post-fix).
+**Referencia:** feedback del equipo [FB-JA] sobre wsclientes0007 (`log.info("Basic info retrieved for CIF: {}", ...)` bajado a debug en post-fix).
 
 ### Check 2.7 — No abuso de log.info
 
@@ -371,7 +372,7 @@ Solo detecta **invocaciones activas** de `decapitalize` (no la mera declaración
 grep -nE "\.decapitalize\(|= decapitalize\(" <PATH>/gradle/postProcessWsdl.groovy
 ```
 
-Cualquier match → **HIGH**. Revertido en commit `bf913b9` del 0007 (2026-04-14).
+Cualquier match → **HIGH**. Revertido en commit `bf913b9` del 0007 (ver Historial).
 
 **Nota:** las funciones `injectXmlRootElement()` y `updatePackageInfo()` son **necesarias** en el patrón del banco (generan `@XmlRootElement` y `package-info.java`), NO son problemáticas. Solo `decapitalize` invocada activamente rompería el PascalCase de los elementos raíz.
 
@@ -439,7 +440,7 @@ grep -c "Datos de la cabecera de la transaccion no se han asignado" \
 - 0 matches → **MEDIUM** (mensaje custom en vez del canónico).
 - ≥ 1 match ✓ PASS (puede ser 1 constante reusada o 2 literales).
 
-**Referencia:** wsclientes0007 post-fix 2026-04-16 (commit `bbcc62a` de Kevin Armas).
+**Referencia:** wsclientes0007 post-fix (commit `bbcc62a`).
 
 ### Check 4.6 — Patterns de validación del header externalizados [FB-JA] [Rule 9e.2]
 
@@ -470,7 +471,7 @@ grep -cE "^@Component|public class HeaderRequestValidator" \
 
 < 2 matches → **HIGH** (el validator debe ser `@Component` con inyección de props, no `final class` con métodos estáticos).
 
-**Referencia:** feedback Jonathan Arana / Alexis 2026-04-17 sobre wsclientes0007; refactor aplicado en post-fix del mismo día.
+**Referencia:** feedback del equipo [FB-JA] sobre wsclientes0007; refactor aplicado en post-fix.
 
 ---
 
@@ -499,7 +500,7 @@ try {
 }
 ```
 
-**Referencia:** wsclientes0015 NO lo tiene (hueco del gold standard). wsclientes0007 lo cubrió post-feedback de Jean Pierre.
+**Referencia:** wsclientes0015 NO lo tiene (hueco del gold standard). wsclientes0007 lo cubrió post-feedback del tech lead [FB-JG].
 
 ### Check 5.2 — Controller/Service atrapa BancsOperationException
 
@@ -558,7 +559,7 @@ public record BancsErrorCodesProperties(String iib, String bancsApp) {}
 // buildBancsErrorResponse → backendCodes.bancsApp()  (BancsOperationException)
 ```
 
-**Referencia:** wsclientes0024/0013/0006 (golds) todos tienen el bug `"00000"` — **no replicar**. wsclientes0007 lo corrigió post-auditoría 2026-04-16.
+**Referencia:** wsclientes0024/0013/0006 (golds) todos tienen el bug `"00000"` — **no replicar**. wsclientes0007 lo corrigió en post-auditoría (ver Historial).
 
 ### Check 5.5 — BusinessValidationException en domain
 
@@ -625,7 +626,7 @@ grep -cE 'assertEquals\("(INFO|ERROR|FATAL)",.*getTipo' \
 
 < 4 matches → **MEDIUM**. Cada rama del Controller debe tener al menos un test que asierte el `tipo` (success=INFO, business=ERROR, bancs=FATAL, unexpected=FATAL).
 
-**Referencia:** wsclientes0007 post-fix 2026-04-16 (tipo FATAL para header-missing + Bancs + Exception genérica). Los golds 0024/0013/0006 NO aplican esta clasificación — **no replicar**.
+**Referencia:** wsclientes0007 post-fix (tipo FATAL para header-missing + Bancs + Exception genérica). Los golds 0024/0013/0006 NO aplican esta clasificación — **no replicar**.
 
 ---
 
@@ -958,7 +959,7 @@ Faltante → **HIGH**.
 
 ## BLOQUE 11 — REST strategies (solo si aplica)
 
-**Origen:** wsclientes0024 (gold standard REST, FROZEN 2026-04-14)
+**Origen:** wsclientes0024 (gold standard REST, referencia estable)
 
 Si `projectType != REST`, saltar.
 
@@ -1430,11 +1431,6 @@ Encontradas: `application/`, `domain/`, `infrastructure/`
 **Ref:** [FB-JG]
 
 ...
-
----
-
-## Changelog del checklist
-- 2026-04-14: versión inicial
 ```
 
 **Orden de severidad en la salida:**
@@ -1450,151 +1446,24 @@ Encontradas: `application/`, `domain/`, `infrastructure/`
 
 ---
 
-## EJEMPLO DE OUTPUT (preview sobre wsclientes0007)
-
-Aplicado a `C:\Dev\Banco Pichincha\CapaMedia\0007\destino` a fecha 2026-04-14:
-
-```markdown
-# Post-Migration Checklist Report
-**Project:** C:\Dev\Banco Pichincha\CapaMedia\0007\destino
-**Type:** SOAP
-**Gold standard:** wsclientes0015
-**Date:** 2026-04-14
-
-## Summary
-| Block | Pass | HIGH | MEDIUM | LOW |
-|---|---|---|---|---|
-| 0 Pre-check | 2/2 | 0 | 0 | 0 |
-| 1 Hexagonal | 5/5 | 0 | 0 | 0 |
-| 2 Logging | 4/5 | 0 | 0 | 1 |
-| 3 Naming | 3/4 | 1 | 0 | 0 |
-| 4 Validaciones | 2/4 | 1 | 1 | 0 |
-| 5 Error handling | 4/4 | 0 | 0 | 0 |
-| 6 Mappers/tipos | 3/4 | 0 | 1 | 0 |
-| 7 Config externa | 2/6 | 2 | 2 | 0 |
-| 8 Versiones | 3/4 | 0 | 1 | 0 |
-| 9 Tests | 3/5 | 0 | 2 | 0 |
-| 10 SOAP specifics | 4/4 | 0 | 0 | 0 |
-| 11 REST strategies | N/A | — | — | — |
-| 12 REST specifics | N/A | — | — | — |
-| **TOTAL** | **35/47** | **4** | **7** | **1** |
-
-**Verdict:** BLOCKED_BY_HIGH
-
----
-
-## Block 3 — Naming de métodos
-
-### 3.1 Output ports usan `get*` — ❌ HIGH
-**Hallado:** 2 métodos `query*` en puerto de lectura:
-  - `BancsCustomerOutputPort.queryTransactionalContact`
-  - `BancsCustomerOutputPort.queryCustomerInfoField`
-**Acción:** renombrar a `getTransactionalContact` y `getCustomerInfoField` (+ usos en service y tests).
-**Ref:** [FB-JG]
-
-### 3.2 `@PayloadRoot.localPart` PascalCase — ✅ PASS
-`"ConsultarContactoTransaccional01"` correcto.
-
-### 3.3 Java method camelCase — ✅ PASS
-### 3.4 postProcessWsdl sin decapitalize — ✅ PASS
-Commit bf913b9 revirtió la lógica problemática.
-
----
-
-## Block 4 — Validaciones
-
-### 4.1 HeaderRequestValidator existe — ❌ HIGH
-**Hallado:** 0 archivos en `infrastructure/input/adapter/soap/util/`.
-**Acción:** crear `HeaderRequestValidator` siguiendo el patrón de `wsclientes0024/HeaderRequestValidator.java` adaptado al tipo JAXB `GenericHeaderIn` que llega vía Spring WS.
-**Ref:** [FB-JG]
-
-### 4.2 No está en domain/application — ✅ PASS
-### 4.3 Controller invoca validator — ⚠ MEDIUM
-**Nota:** consecuencia de 4.1. Se resolverá junto con 4.1.
-### 4.4 Validaciones body en domain/app — ✅ PASS (informativo)
-
----
-
-## Block 7 — Configuración externa
-
-### 7.1 catalog-info.yaml completo — ❌ HIGH
-**Hallado:** archivo con placeholders sin resolver:
-  - `<owner>`, `<system>`, `<domain>`, `<lifecycle>`, `<dynatrace-entity-id>`, `<sonarcloud-project-key>`
-  - Bloque `spec.definition:` presente (debe eliminarse)
-  - Link de SwaggerHub presente (debe eliminarse)
-**Acción:** reemplazar con template canónico (ver §7 del checklist).
-**Ref:** [FB-JG]
-
-### 7.2 azure-pipelines.yml — ✅ PASS
-`CMDB_APPLICATION_ID: "Red Hat OpenShift Container Platform"` ✓
-`KUBERNETES_NAMESPACE: tnd-middleware` ✓
-
-### 7.3 application.yml usa ENV del Helm — ⚠ MEDIUM
-**Hallado:** 2 URLs con valor por defecto hardcoded (aceptable), 0 secrets hardcoded.
-**Acción:** verificar que todos los endpoints productivos usen `${VAR:default}`.
-
-### 7.4 Validar Bancs/WebClient/CircuitBreaker — ⚠ MEDIUM
-**Hallado:** `bancs:` ✓, `webclient:` ✓, `resilience4j:` falta sección explícita.
-
-### 7.5 Helm por entorno — ❌ HIGH
-**Hallado:** solo `values.yaml` genérico, faltan `values-dev.yaml`, `values-test.yaml`, `values-prod.yaml`.
-**Ref:** [PDF-OFICIAL]
-
-### 7.6 @ConfigurationPropertiesScan — ✅ PASS
-
----
-
-## Block 2 — Logging
-
-### 2.1 @BpTraceable en Controller — ✅ PASS
-### 2.2 @BpLogger en todos los @Service — ✅ PASS (1/1 services, 1/1 métodos públicos cubiertos)
-### 2.3 @BpLogger en Adapters — ✅ PASS (4 métodos en BancsCustomerAdapter)
-### 2.4 Logs con GUID — ✅ PASS
-### 2.5 Abuso de log.info — ℹ LOW
-**Hallado:** `BancsCustomerAdapter.java` con 6 log.info. Revisar si son necesarios o parte del flujo normal.
-
----
-
-## Block 6 — Mappers y tipos
-
-### 6.1 Mappers dedicados — ✅ PASS
-SOAP mapper + Bancs mapper + repository mapper presentes.
-### 6.2 MapStruct — ✅ PASS
-### 6.3 Sin new Record(>=8 args) inline — ⚠ MEDIUM
-**Hallado:** `ConsultarContactoTransaccionalService.handleFallbackPath` y `.buildDirectResult` construyen `new CustomerContactResult(12 args)` inline.
-**Acción:** agregar factory estático `CustomerContactResult.fromFallback(...)` / `.fromDirect(...)` en el record.
-### 6.4 Sin Object/Map<String,Object> en puertos — ✅ PASS
-
----
-
-## Block 9 — Tests y calidad
-
-### 9.1 JaCoCo ≥ 75% — ✅ PASS (80.12%)
-### 9.2 Build verde — ✅ PASS (61 tests OK)
-### 9.3 Tests por capa — ⚠ MEDIUM
-**Hallado:** 1 test de service, 1 de controller, 4 de adapter/helper = 6 archivos. Falta test específico de `PhoneNormalizationUtil`.
-### 9.4 @Nested + S2187 — ✅ PASS (no usa @Nested)
-### 9.5 SonarLint — ℹ INFO (ejecutar en IDE local)
-
----
-
-## Changelog del checklist
-- 2026-04-14: versión inicial
-```
-
----
-
 ## CÓMO EJECUTARLO
 
-Desde Claude Code:
+Desde Claude Code, invocar el skill `/post-migracion` con el path al proyecto migrado (y opcionalmente el path al legacy original para habilitar el análisis cruzado del BLOQUE 0):
 
 ```
-/03-checklist-post-migracion.md path="C:/Dev/Banco Pichincha/CapaMedia/0007/destino"
+/post-migracion <MIGRATED_PATH> [<LEGACY_PATH>]
 ```
 
-O directamente en una instrucción:
+Ejemplos:
 
-> "Aplicá el checklist post-migración de `prompts/migracion/03-checklist-post-migracion.md` sobre `C:/Dev/Banco Pichincha/CapaMedia/0007/destino`. Devolveme solo HIGH y MEDIUM, skip PASS."
+```
+/post-migracion /ruta/absoluta/al/servicio-migrado
+/post-migracion /ruta/absoluta/al/servicio-migrado /ruta/absoluta/al/legacy-original
+```
+
+También puede ejecutarse como instrucción libre apuntando a este archivo:
+
+> "Aplicá el checklist post-migración de `prompts/post-migracion/03-checklist.md` sobre `<MIGRATED_PATH>`. Devolveme solo HIGH y MEDIUM, skip PASS."
 
 El agente debe:
 1. Detectar tipo de proyecto (Bloque 0)
@@ -1604,3 +1473,22 @@ El agente debe:
 5. Cerrar con Verdict
 
 NO auto-corrige. NO modifica archivos. Solo lee y reporta.
+
+---
+
+## Historial de decisiones (contexto de las reglas)
+
+Este historial documenta las decisiones clave que motivan los checks de este archivo. Sirve para entender **por qué** cada regla existe. Los detalles del servicio-ancla `wsclientes0007` aparecen porque fue el primero en aplicar cada corrección antes de que se consolidaran como regla.
+
+| Fecha | Servicio / commit | Decisión que originó una regla |
+|---|---|---|
+| 2026-04-14 | Checklist v1 — inicial | Primera versión del checklist. Base: gold standards `wsclientes0024` (REST) y `wsclientes0015` (SOAP). |
+| 2026-04-14 | `bf913b9` (wsclientes0007) | **`postProcessWsdl.groovy` sin `decapitalize`** — revertida la lógica que decapitalizaba el root element del WSDL. La fuente de verdad es el XSD en PascalCase. → Check 3.4. |
+| 2026-04-16 | `bbcc62a` (wsclientes0007) | **`error.tipo = FATAL`** para header-missing + Bancs + Exception genérica. Antes solo INFO/ERROR. También mensaje canónico `"Datos de la cabecera de la transaccion no se han asignado"` (error 9927 del catálogo `errores.xml`). → Checks 4.5 y 5.6. |
+| 2026-04-16 | wsclientes0007 post-audit | **`error.backend` desde el catálogo oficial** `sqb-cfg-codigosBackend-config/codigosBackend.xml`, NO hardcodeado como `"00000"`. Los golds 0024/0013/0006 tienen el bug `"00000"` — no replicar. → Check 5.4. |
+| 2026-04-17 | wsclientes0007 post-fix | **`log.info` reservado para eventos de contrato; diagnóstico a `log.debug`.** Origen: feedback del equipo [FB-JA]. → Checks 2.6 y 2.7. |
+| 2026-04-17 | wsclientes0007 post-fix | **Patrones del `HeaderRequestValidator` externalizados** a `HeaderValidationProperties` (`@ConfigurationProperties`, ConfigMap de OpenShift). Validator convertido en `@Component` inyectable, no `final class` estática. Origen: feedback del equipo [FB-JA]. → Check 4.6. |
+| 2026-04-18 | Matriz oficial formalizada | **1 op → REST + WebFlux, 2+ ops → SOAP + Spring MVC** (sin excepciones, igual para IIB / WAS / ORQ). La presencia de BD se trata como tecnología agregada dentro del prompt elegido, no como criterio para saltar a otro. wsclientes0007 queda como caso mal-clasificado histórico. → BLOQUE 0. |
+| 2026-04-20 | BPTPSRE PDFs incorporados | **Estructura de error oficial** con 8 campos (`mensajeNegocio` lo gestiona DataPower — NUNCA el servicio). **Patrones IIB** de config: `GestionarRecursoXML` (archivos XML) y `GestionarRecursoConfigurable` (cache). **Patrones WAS** de config: `.properties` en `/apps/proy/OMNICANALIDAD_SERVICIOS/conf/` + clases `Propiedad.java`, `ErrorTipo.java`, `ServicioExcepcion`. **Librerías WebFlux opcionales**: `mdw-dm-lib-audit-log-reactive` (`@LogAudit`/`@LogAuditStep`) y `mdw-dm-lib-stratio-connector` (`StratioQueryExecutor`). → BLOQUE 15. |
+
+**Servicios-referencia citados en el checklist (`wsclientes0007/0013/0015/0024`):** son proyectos reales del banco usados como fuente de patrones o como ejemplos de anti-patrones. No se tocan desde este repo — son referencias de solo lectura. Los huecos conocidos de cada uno (`0024/0013/0006` con `"00000"` hardcodeado; `0015` con 3 ports Bancs y `log.info` excesivo; etc.) están documentados inline en cada Check correspondiente.
