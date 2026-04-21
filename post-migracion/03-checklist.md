@@ -1521,6 +1521,21 @@ grep -rn "@ConfigurationProperties" <PATH>/src/main/java/com/pichincha/sp/infras
 - Si el servicio migrado sigue leyendo `.xml` de disco con `XmlMapper`/`DocumentBuilder` en runtime → **HIGH**. Acción: migrar el contenido del XML a `application.yml` o ConfigMap, binding vía `@ConfigurationProperties`.
 - Si no hay trace de XML loading en el migrado → ✅ **PASS** (probablemente ya se migró a properties).
 
+### Check 15.9 — Configurables IIB desde CSV local: si aplica, resueltos en `application.yml` / Helm
+
+Si el ANALISIS reportó uso de `GestionarRecursoConfigurable` en legacy:
+
+```bash
+# Buscar placeholders pendientes o trazas del legacy en config
+grep -rnE "TBD|pendiente_validar|Environment\\.cache|GestionarRecursoConfigurable" <PATH>/src/main/resources/application.yml <PATH>/helm/ 2>/dev/null
+```
+
+**Veredicto:**
+- Cada campo usado del configurable debe trazarse al archivo local `prompts/ConfigurablesBusOmniTest_Transfor(ConfigurablesBusOmniTest_Transf).csv` o a una `${CCC_*}` con presencia en Helm si es secreto o depende del ambiente.
+- Si queda `TBD` aunque el valor exista en el CSV local → **HIGH**.
+- Si el servicio deja nombres genéricos o env vars sin mapear los campos detectados en `ANALISIS_<ServiceName>.md` → **MEDIUM**.
+- Si todos los campos quedan resueltos con literal o `${CCC_*}` justificado → ✅ **PASS**.
+
 ---
 
 ## FORMATO DEL REPORTE
@@ -1623,6 +1638,6 @@ Este historial documenta las decisiones clave que motivan los checks de este arc
 | 2026-04-17 | wsclientes0007 post-fix | **`log.info` reservado para eventos de contrato; diagnóstico a `log.debug`.** Origen: feedback del equipo [FB-JA]. → Checks 2.6 y 2.7. |
 | 2026-04-17 | wsclientes0007 post-fix | **Patrones del `HeaderRequestValidator` externalizados** a `HeaderValidationProperties` (`@ConfigurationProperties`, ConfigMap de OpenShift). Validator convertido en `@Component` inyectable, no `final class` estática. Origen: feedback del equipo [FB-JA]. → Check 4.6. |
 | 2026-04-18 | Matriz oficial formalizada | **1 op → REST + WebFlux, 2+ ops → SOAP + Spring MVC** (sin excepciones, igual para IIB / WAS / ORQ). La presencia de BD se trata como tecnología agregada dentro del prompt elegido, no como criterio para saltar a otro. wsclientes0007 queda como caso mal-clasificado histórico. → BLOQUE 0. |
-| 2026-04-20 | BPTPSRE PDFs incorporados | **Estructura de error oficial** con 8 campos (`mensajeNegocio` lo gestiona DataPower — NUNCA el servicio). **Patrones IIB** de config: `GestionarRecursoXML` (archivos XML) y `GestionarRecursoConfigurable` (cache). **Patrones WAS** de config: `.properties` en `/apps/proy/OMNICANALIDAD_SERVICIOS/conf/` + clases `Propiedad.java`, `ErrorTipo.java`, `ServicioExcepcion`. **Librerías WebFlux opcionales**: `mdw-dm-lib-audit-log-reactive` (`@LogAudit`/`@LogAuditStep`) y `mdw-dm-lib-stratio-connector` (`StratioQueryExecutor`). → BLOQUE 15. |
+| 2026-04-20 | BPTPSRE PDFs incorporados | **Estructura de error oficial** con 8 campos (`mensajeNegocio` lo gestiona DataPower — NUNCA el servicio). **Patrones IIB** de config: `GestionarRecursoXML` (archivos XML) y `GestionarRecursoConfigurable` (cache), usando `ConfigurablesBusOmniTest_Transfor(ConfigurablesBusOmniTest_Transf).csv` como fuente operativa para poblar `application.yml` / Helm cuando haya configurables. **Patrones WAS** de config: `.properties` en `/apps/proy/OMNICANALIDAD_SERVICIOS/conf/` + clases `Propiedad.java`, `ErrorTipo.java`, `ServicioExcepcion`. **Librerías WebFlux opcionales**: `mdw-dm-lib-audit-log-reactive` (`@LogAudit`/`@LogAuditStep`) y `mdw-dm-lib-stratio-connector` (`StratioQueryExecutor`). → BLOQUE 15. |
 
 **Servicios-referencia citados en el checklist (`wsclientes0007/0013/0015/0024`):** son proyectos reales del banco usados como fuente de patrones o como ejemplos de anti-patrones. No se tocan desde este repo — son referencias de solo lectura. Los huecos conocidos de cada uno (`0024/0013/0006` con `"00000"` hardcodeado; `0015` con 3 ports Bancs y `log.info` excesivo; etc.) están documentados inline en cada Check correspondiente.

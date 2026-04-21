@@ -86,7 +86,9 @@ Before executing, verify that you have access to:
    ```
    The adapter suffix (e.g., `profile`, `location`, `economic`, `reference`) determines which `CCC_BANCS_ADAPTER_<SUFFIX>_BASE_URL` env var to use. **NEVER guess the adapter — always consult this catalog.**
 
-4. **Gold standard reference project:** `tnd-msa-sp-wsclientes0024` — the ONLY approved REST migration reference. Uses `@RestController` + `@PostMapping`, Spring WebFlux (Netty reactive, NO .block()), `ErrorResolverHandler` (`ErrorWebExceptionHandler`) for SOAP Fault generation, single adapter with `@BancsService("ws-txNNNNNN")`, NO WebServiceConfig, NO NamespacePrefixInterceptor.
+4. **Servicios Configurables catalog (MANDATORY when the ANALYSIS reports `GestionarRecursoConfigurable`)** — Local file `prompts/ConfigurablesBusOmniTest_Transfor(ConfigurablesBusOmniTest_Transf).csv`. Treat it as the operational source of truth for `Environment.cache.<ConfigName>.<field>` values. Resolve every used field here before leaving any placeholder.
+
+5. **Gold standard reference project:** `tnd-msa-sp-wsclientes0024` — the ONLY approved REST migration reference. Uses `@RestController` + `@PostMapping`, Spring WebFlux (Netty reactive, NO .block()), `ErrorResolverHandler` (`ErrorWebExceptionHandler`) for SOAP Fault generation, single adapter with `@BancsService("ws-txNNNNNN")`, NO WebServiceConfig, NO NamespacePrefixInterceptor.
 
 > **CRITICAL: Do NOT reference wsclientes0015 for BUS migrations.** The 0015 was a BUS (IIB) service migrated as SOAP (@Endpoint, BancsClientHelper, .block(), WebServiceConfig, NamespacePrefixInterceptor). Under the current MCP matrix, BUS services with `invocaBancs: true` ALWAYS go REST+WebFlux — they NEVER use SOAP patterns. The 0015 is only valid as gold standard for WAS 2+ ops (SOAP prompt). For ALL services reaching this REST prompt (BUS, ORQ, WAS 1-op), use **wsclientes0024 exclusively**.
 >
@@ -2317,6 +2319,13 @@ public class CatalogExceptionConstants {
 ---
 
 #### 4.13 application.yml
+
+If the ANALYSIS reported `GestionarRecursoConfigurable`, create the corresponding service-specific config block in `application.yml` and resolve it from the local CSV `ConfigurablesBusOmniTest_Transfor(ConfigurablesBusOmniTest_Transf).csv`.
+
+Rules:
+- Non-secret functional values (lengths, prefixes, booleans, cache durations, business timeouts) may be committed as literals.
+- Secrets or environment-dependent values must stay as `${CCC_*}` and be declared in `helm/*.yml`.
+- NEVER leave a configurable as `TBD` if the field exists in the local CSV.
 
 ```yaml
 spring:

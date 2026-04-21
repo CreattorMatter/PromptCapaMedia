@@ -109,7 +109,9 @@ Before executing, verify that you have access to:
    ```
    The adapter suffix (e.g., `profile`, `location`, `economic`, `reference`) determines which `CCC_BANCS_ADAPTER_<SUFFIX>_BASE_URL` env var to use. **NEVER guess the adapter -- always consult this catalog.**
 
-4. **Gold standard reference project:** `tnd-msa-sp-wsclientes0015` -- the ONLY approved SOAP migration reference. Uses Spring WS `@Endpoint`, `BancsClientHelper` abstract + per-TX subclasses, `HeaderRequestModel`, `NamespacePrefixInterceptor`, `WebServiceConfig`, per-TX circuit breaker, Undertow blocking.
+4. **Servicios Configurables catalog (MANDATORY when the ANALYSIS reports `GestionarRecursoConfigurable`)** -- Local file `prompts/ConfigurablesBusOmniTest_Transfor(ConfigurablesBusOmniTest_Transf).csv`. Treat it as the operational source of truth for `Environment.cache.<ConfigName>.<field>` values. Resolve every used field here before leaving any placeholder.
+
+5. **Gold standard reference project:** `tnd-msa-sp-wsclientes0015` -- the ONLY approved SOAP migration reference. Uses Spring WS `@Endpoint`, `BancsClientHelper` abstract + per-TX subclasses, `HeaderRequestModel`, `NamespacePrefixInterceptor`, `WebServiceConfig`, per-TX circuit breaker, Undertow blocking.
 
 > **CRITICAL WARNING about wsclientes0015:** This gold standard was originally a **BUS (IIB)** service migrated as SOAP. Under the **current MCP matrix**, BUS services with `invocaBancs: true` ALWAYS go REST+WebFlux — they would NEVER use this SOAP prompt. The 0015 remains valid as a gold standard **exclusively for WAS services with 2+ operations** (the only case that reaches this prompt). When using 0015 as reference, be aware that its BANCS integration patterns (BancsClientHelper, per-TX circuit breaker) are correct for the SOAP/MVC stack, but its origin as a BUS service is a historical artifact that should NOT be taken as evidence that BUS services can use SOAP.
 
@@ -2193,7 +2195,7 @@ Si el servicio consume backends adicionales (DataPower, WSO2, WAS, etc.), agrega
 
 **Required structure (in this order):**
 1. `spring.application.name`
-2. `app.normalization.*` (or service-specific config) -- only if needed
+2. `app.normalization.*` (or service-specific config) -- only if needed; if legacy uses `GestionarRecursoConfigurable`, resolve the values from the local CSV `ConfigurablesBusOmniTest_Transfor(ConfigurablesBusOmniTest_Transf).csv`
 3. `bancs.error-codes.iib` + `bancs.error-codes.bancs-app` (Rule 9c) — **MANDATORY**
 4. `bancs.webclients.*` -- one entry per TX
 5. `bancs.iib-support.enabled`
@@ -2212,6 +2214,11 @@ Si el servicio consume backends adicionales (DataPower, WSO2, WAS, etc.), agrega
 **Excepción única — `bancs.error-codes`:** los valores son constantes del catálogo oficial del banco (`00638` y `00045` no cambian entre entornos). Se permite inline default `${CCC_BANCS_ERROR_CODE_IIB:00638}` / `${CCC_BANCS_ERROR_CODE_BANCS_APP:00045}` para que el servicio arranque aunque el Helm no los declare — el ENV queda como válvula de escape si el banco decidiera cambiar un código oficial.
 
 **CRITICAL: Each `ws-txNNNNNN.base-url` MUST match the adapter from the catalog `prompts/tx-adapter-catalog.json`.**
+
+For `GestionarRecursoConfigurable` values:
+- Non-secret functional values (lengths, prefixes, booleans, cache durations, business timeouts) may be committed as literals in `application.yml`.
+- Secrets or environment-dependent values must stay as `${CCC_*}` and be declared in `helm/*.yml`.
+- NEVER leave a configurable as `TBD` if the field exists in the local CSV.
 
 Process:
 1. For each TX code identified in the ANALYSIS, look up its `adaptador` field in `tx-adapter-catalog.json`

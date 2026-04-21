@@ -36,7 +36,7 @@ Migracion de servicios legacy a Java 21 + Spring Boot + arquitectura hexagonal O
 
 **Patrones legacy IIB de configuración:**
 - `GestionarRecursoXML('carpeta', 'archivo', ...)` → archivos XML en repos `sqb-cfg-<archivo>-<carpeta>` (ej: `sqb-cfg-codigosBackend-config`, `sqb-cfg-errores-errors`) — ya commiteados en este repo.
-- `GestionarRecursoConfigurable('OmniServiceConfig', ...)` → servicios configurables cacheados en `Environment.cache.<Name>`; fuente XLSX en SharePoint (no accesible — marcar como TBD).
+- `GestionarRecursoConfigurable('OmniServiceConfig', ...)` → servicios configurables cacheados en `Environment.cache.<Name>`; origen histórico: XLSX en SharePoint. **Fuente operativa en este repo:** `prompts/ConfigurablesBusOmniTest_Transfor(ConfigurablesBusOmniTest_Transf).csv`. Resolver allí los campos usados y poblar `application.yml` / Helm. Solo dejar `TBD` si el configurable o el campo no existe en el CSV local.
 
 **Patrones legacy WAS de configuración:**
 - Properties: `/apps/proy/OMNICANALIDAD_SERVICIOS/conf/{<servicio>,generalServices,CatalogoAplicaciones}.properties`
@@ -55,8 +55,8 @@ Migracion de servicios legacy a Java 21 + Spring Boot + arquitectura hexagonal O
 ## Arquitectura: Hexagonal OLA1
 ```
 application/
-  port/input/    <- abstract classes (NUNCA interfaces)
-  port/output/   <- abstract classes (NUNCA interfaces)
+  port/input/    <- interfaces (NUNCA abstract classes)
+  port/output/   <- interfaces (NUNCA abstract classes)
   service/       <- @Service @RequiredArgsConstructor @Slf4j
 domain/
   model/         <- Records puros, CERO imports de Spring
@@ -70,7 +70,7 @@ infrastructure/
 ```
 
 ## Reglas criticas (NUNCA violar)
-- Ports son ABSTRACT CLASSES, nunca interfaces
+- Ports son INTERFACES, nunca abstract classes
 - domain/ no importa Spring, SOAP, JPA, WebFlux
 - application/ no importa infrastructure/
 - CERO @Autowired — solo @RequiredArgsConstructor

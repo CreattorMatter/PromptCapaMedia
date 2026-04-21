@@ -294,12 +294,14 @@ Banco Pichincha's IIB uses two explicit helpers for config lookup. Scan the ESQL
    ```
    For each invocation: folder arg, file arg, and where the result is consumed.
 
-2. **`GestionarRecursoConfigurable`** — loads **Servicios Configurables** (cached key/value properties) into `Environment.cache.<ConfigName>`. Source is the SharePoint XLSX `ConfigurablesBusOmniTest_Transfor.xlsx` (not in Azure DevOps — often inaccessible during analysis).
+2. **`GestionarRecursoConfigurable`** — loads **Servicios Configurables** (cached key/value properties) into `Environment.cache.<ConfigName>`. Historical source is the SharePoint XLSX `ConfigurablesBusOmniTest_Transfor.xlsx`, but in this repo the working source of truth is the local file `prompts/ConfigurablesBusOmniTest_Transfor(ConfigurablesBusOmniTest_Transf).csv`.
    ```esql
    CALL com.bpichincha.esb.generico.recursos.GestionarRecursoConfigurable('OmniServiceConfig', configurable);
    DECLARE configurable REFERENCE TO Environment.cache.OmniServiceConfig;
    ```
-   For each configurable: name, fields read from `Environment.cache.<Name>.*`. Mark values as `TBD (SharePoint XLSX not accessed)` unless the dev provides the sheet.
+   For each configurable: name, fields read from `Environment.cache.<Name>.*`, and the exact value resolved from the local CSV when present. Only use `TBD` when the configurable or field is missing from the CSV. Also classify each field as:
+   - **Literal in `application.yml`** — non-secret functional values (lengths, prefixes, flags, cache durations, business timeouts).
+   - **`${CCC_*}` + Helm/ConfigMap** — secrets or clearly environment-dependent values (URLs, credentials, tokens, certificates).
 
 3. **Error helper ESQLs** — mandatory scan of two specific files if they exist in the legacy tree:
    - `InvocarBancs.esql` — builds `et_bancs` error tuples (code, message, type, backend) for Bancs calls
@@ -626,9 +628,9 @@ Consolidated table of all business validations:
 #### Configuration Properties
 
 ```markdown
-| Legacy Property | Value/Usage | Spring Boot Suggestion |
-|---|---|---|
-| <property name> | <what it is used for> | <suggested name in application.yml> |
+| Legacy Property | Value/Usage | Source | Spring Boot Suggestion |
+|---|---|---|---|
+| <property name> | <exact value if known + what it is used for> | <legacy code | local CSV | deploy config> | <suggested name in application.yml / Helm> |
 ```
 
 #### Deploy by Environment
