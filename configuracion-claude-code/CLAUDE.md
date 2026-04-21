@@ -8,11 +8,18 @@ Migracion de servicios legacy a Java 21 + Spring Boot + arquitectura hexagonal O
 - **WAS** (WebSphere Application Server) — Java/JAX-WS + típicamente Oracle
 - **ORQ** (Orquestadores) — IIB orchestrators que delegan a otros servicios; análisis liviano
 
-**Matriz oficial REST/SOAP (igual para IIB, WAS y ORQ — sin excepciones):**
-- WSDL con **1 operación** -> REST + Spring WebFlux + `@RestController`
-- WSDL con **2+ operaciones** -> SOAP + Spring MVC + `@Endpoint` (Spring WS dispatching sobre MVC)
+**Matriz MCP oficial (mandatoria, sin excepciones):**
 
-La presencia de BD se maneja dentro del prompt elegido (HikariCP+JPA agregado al SOAP cuando aplica). NO es criterio para saltar de un prompt al otro.
+| Origen Legacy | Condicion | Parametro MCP clave | Stack Target |
+|---|---|---|---|
+| **BUS (IIB)** | Conecta con BANCS | `invocaBancs: true` (override: ignora projectType/webFramework) | REST + WebFlux + `@RestController` |
+| **WAS** | 1 operacion WSDL | params estandar MCP | REST + Spring MVC + `@RestController` |
+| **WAS** | 2+ operaciones WSDL | params estandar MCP | SOAP + Spring MVC + `@Endpoint` |
+| **ORQ** | Siempre | `deploymentType: orquestador` (override: fuerza WebFlux) | REST + WebFlux + `@RestController` |
+
+- **BUS + invocaBancs:** el MCP ignora `projectType` y `webFramework` — siempre genera REST+WebFlux (1 o N operaciones)
+- **WAS:** el conteo de operaciones decide REST MVC (1 op) vs SOAP MVC (2+ ops). BD presente suma HikariCP+JPA dentro del prompt elegido
+- **ORQ:** siempre WebFlux, sin persistencia
 
 **Scaffold inicial:** lo genera el **Fabrics MCP del Banco Pichincha** vía cuestionario. La migración parte desde ese scaffold; no se reconstruye desde cero.
 
@@ -83,9 +90,11 @@ Usar tnd-msa-sp-wsclientes0024 como proyecto de referencia para copiar patrones 
 1. `/pre-migracion <ruta>` — Detecta tipo (IIB / WAS / ORQ) y genera ANALISIS_*.md
    - IIB o WAS -> usa `pre-migracion/01-analisis-servicio.md`
    - ORQ (orquestador) -> usa `pre-migracion/01-analisis-orq.md` (análisis liviano)
-2. `/migrar` — Ejecuta migracion con autocorreccion
-   - WSDL con 1 operacion -> usa `migracion/REST/02-REST-migrar-servicio.md`
-   - WSDL con 2+ operaciones -> usa `migracion/SOAP/02-SOAP-migrar-servicio.md`
+2. `/migrar` — Ejecuta migracion con autocorreccion segun matriz MCP:
+   - BUS (IIB) + invocaBancs -> usa `migracion/REST/02-REST-migrar-servicio.md` (WebFlux, 1 o N ops)
+   - WAS con 1 operacion -> usa `migracion/REST/02-REST-migrar-servicio.md` (MVC)
+   - WAS con 2+ operaciones -> usa `migracion/SOAP/02-SOAP-migrar-servicio.md` (MVC)
+   - ORQ (orquestador) -> usa `migracion/REST/02-REST-migrar-servicio.md` (WebFlux)
 3. `/post-migracion` — Audita el proyecto migrado contra la checklist (`post-migracion/03-checklist.md`), genera reporte pass/fail por bloque (incluye BLOQUE 13 si hay JPA/HikariCP)
 
 ## Commits

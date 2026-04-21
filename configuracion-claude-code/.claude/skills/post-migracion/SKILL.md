@@ -31,8 +31,8 @@ Si el segundo argumento no se pasa, los Checks 0.3/0.4/0.5 degradan a severidad 
 ## Pasos
 
 1. **Bloque 0: Pre-check + análisis cruzado legacy ↔ migrado**
-   - 0.1 Tipo de proyecto (REST/SOAP/MVC) y gold standard aplicable (REST → `tnd-msa-sp-wsclientes0024`; SOAP → `tnd-msa-sp-wsclientes0015`)
-   - 0.2 Conteo de operaciones WSDL (legacy vs migrado) + veredicto conversacional vs framework usado ("¿es 1 op? → ¿va REST? → ¿está OK?")
+   - 0.1 Tipo de proyecto (REST/SOAP/MVC) y gold standard aplicable (REST → `tnd-msa-sp-wsclientes0024`; SOAP → `tnd-msa-sp-wsclientes0015` SOLO para WAS 2+ ops, NO para BUS)
+   - 0.2 Clasificacion MCP: source type (BUS/WAS/ORQ) + parametro MCP clave (invocaBancs/deploymentType/op-count) + veredicto conversacional
    - 0.3 Nombres de operaciones coinciden entre legacy y migrado (solo si `<LEGACY_PATH>` provisto)
    - 0.4 `targetNamespace` del WSDL coincide (solo si `<LEGACY_PATH>` provisto)
    - 0.5 XSDs referenciados están presentes en el migrado

@@ -46,20 +46,26 @@ grep -rl "@RestController" <PATH>/src/main/java
 ```
 
 **Decisión:**
-- Hay `@Endpoint` → **SOAP** (gold standard: `tnd-msa-sp-wsclientes0015`)
-- Hay `@RestController` y no `@Endpoint` → **REST** (gold standard: `tnd-msa-sp-wsclientes0024`, referencia estable)
+- Hay `@Endpoint` → **SOAP** (gold standard: `tnd-msa-sp-wsclientes0015`, pero SOLO válido para WAS 2+ ops)
+- Hay `@RestController` y no `@Endpoint` → **REST** (gold standard: `tnd-msa-sp-wsclientes0024`)
 - Ambos o ninguno → **FAIL HIGH** (proyecto malformado)
 
-### Check 0.2 — Conteo de operaciones: legacy ↔ migrado ↔ framework
+> **ADVERTENCIA sobre wsclientes0015:** Fue originalmente un servicio BUS (IIB) migrado como SOAP. Bajo la matriz MCP actual, BUS+invocaBancs SIEMPRE va REST+WebFlux. El 0015 es gold standard SOLO para WAS con 2+ operaciones. Si el proyecto auditado es BUS y tiene patrones SOAP del 0015 (@Endpoint, WebServiceConfig, NamespacePrefixInterceptor, BancsClientHelper, .block()), es **mal-clasificado**.
 
-**Principio del banco:** la matriz oficial es estricta por `<portType>` del WSDL legacy:
+### Check 0.2 — Clasificacion MCP: source type + parametro clave ↔ framework
 
-| Operaciones WSDL | Framework correcto | Prompt usado |
-|---|---|---|
-| **1** | Spring WebFlux + `@RestController` (Netty reactive, sin `.block()`) | REST |
-| **2 o más** | Spring MVC + `@Endpoint` (Spring WS dispatching sobre MVC + Undertow) | SOAP |
+**Principio del banco:** la matriz oficial es MCP-driven, basada en el tipo de origen legacy y el parametro MCP clave:
 
-Aplica igual para IIB, WAS y ORQ. BD presente es ortogonal (suma HikariCP+JPA o R2DBC según el caso, NO cambia la decisión REST/SOAP).
+| Origen Legacy | Condicion | Parametro MCP clave | Framework correcto | Prompt |
+|---|---|---|---|---|
+| **BUS (IIB)** | invocaBancs=true | `invocaBancs: true` (override) | REST + WebFlux + `@RestController` | REST |
+| **WAS** | 1 op WSDL | params estandar | REST + Spring MVC + `@RestController` | REST |
+| **WAS** | 2+ ops WSDL | params estandar | SOAP + Spring MVC + `@Endpoint` | SOAP |
+| **ORQ** | siempre | `deploymentType: orquestador` | REST + WebFlux + `@RestController` | REST |
+
+- **BUS + invocaBancs:** el MCP ignora `projectType` y `webFramework` — siempre REST+WebFlux (1 o N ops)
+- **WAS:** el conteo de operaciones decide REST MVC (1 op) vs SOAP MVC (2+ ops). BD presente es ortogonal
+- **ORQ:** siempre WebFlux via `deploymentType: orquestador`
 
 #### Paso 1 — Contar operaciones en el WSDL **migrado**
 
@@ -94,29 +100,67 @@ fi
 - `OPS_LEGACY != OPS_MIGRATED` → **HIGH** "¡Che! El WSDL del proyecto tiene N operaciones pero el legacy tenía M. Revisá si se perdió o duplicó alguna operación al copiar."
 - `<LEGACY_PATH>` no provisto → **MEDIUM** "No se pudo cruzar con el legacy; tomando el conteo del proyecto como fuente única."
 
-#### Paso 4 — Veredicto conversacional (diálogo explícito)
+#### Paso 4 — Detectar tipo de origen legacy
+
+```bash
+# Determinar si es BUS (IIB), WAS, o ORQ
+# BUS: tiene *.esql
+# WAS: tiene *.java + web.xml, no tiene *.esql
+# ORQ: tiene *.esql + patron IniciarOrquestacionSOAP o nombre ORQ*
+if [ -n "<LEGACY_PATH>" ]; then
+  HAS_ESQL=$(find <LEGACY_PATH> -name "*.esql" 2>/dev/null | head -1)
+  HAS_JAVA=$(find <LEGACY_PATH> -name "*.java" -path "*/src/*" 2>/dev/null | head -1)
+  HAS_WEBXML=$(find <LEGACY_PATH> -name "web.xml" 2>/dev/null | head -1)
+
+  if [ -n "$HAS_ESQL" ]; then
+    SOURCE_TYPE="BUS"  # podria ser ORQ, verificar nombre
+  elif [ -n "$HAS_JAVA" ] && [ -n "$HAS_WEBXML" ]; then
+    SOURCE_TYPE="WAS"
+  else
+    SOURCE_TYPE="UNKNOWN"
+  fi
+else
+  # Sin legacy path, inferir del migration-context.json
+  SOURCE_TYPE=$(grep -o '"tecnologia_origen":\s*"[^"]*"' <MIGRATED_PATH>/migration-context.json 2>/dev/null \
+    | sed 's/.*: *"\([^"]*\)"/\1/' | tr '[:lower:]' '[:upper:]')
+fi
+echo "Tipo de origen: $SOURCE_TYPE"
+```
+
+#### Paso 5 — Veredicto conversacional (diálogo explícito)
 
 El reporte debe rendir este diálogo literal, con los valores reemplazados:
 
 ```
+¿Cuál es el tipo de origen legacy? → $SOURCE_TYPE (BUS | WAS | ORQ)
 ¿Cuántas operaciones tiene el WSDL? → $OPS_LEGACY
-¿Qué framework corresponde según la matriz? → <REST si OPS=1 | SOAP si OPS>=2>
+¿Conecta con BANCS (invocaBancs)? → <SÍ | NO>
+¿Qué framework corresponde según la matriz MCP? → <ver tabla abajo>
 ¿Qué framework se usó en la migración? → <projectType de Check 0.1>
 ¿Coincide lo usado con lo que la matriz pide? → <SÍ ✅ | NO ❌>
 Veredicto final: <PASS | HIGH mal-clasificado | etc.>
 ```
 
-#### Paso 5 — Reglas de severidad
+#### Paso 6 — Reglas de severidad (matriz MCP-driven)
 
-- 1 op legacy + tipo REST → ✅ **PASS**. Diálogo: *"Es 1 op, va REST. ¿Está OK? Sí, está OK."*
-- 2+ ops legacy + tipo SOAP → ✅ **PASS**. Diálogo: *"Son N ops, va SOAP. ¿Está OK? Sí, está OK."*
-- 1 op legacy + tipo SOAP → **HIGH** (mal-clasificado). Diálogo: *"Es 1 op → debió ir REST + WebFlux. Se migró como SOAP → está mal-clasificado."*
-- 2+ ops legacy + tipo REST → **HIGH** (mal-clasificado). Diálogo: *"Son N ops → REST+WebFlux no soporta dispatching multi-operation, necesita Spring WS sobre MVC."*
-- 1 op + tipo REST + `DB_USAGE: YES` → ✅ **PASS con flag** `ATTENTION_NEEDED_REST_WITH_DB`. Diálogo: *"Es 1 op con BD → queda en REST. ¿Usaste R2DBC o blocking boundary? Confirmá el approach con el equipo."*
+**BUS (IIB) + invocaBancs:**
+- BUS + tipo REST (WebFlux) → ✅ **PASS** (cualquier cantidad de ops). Diálogo: *"Es BUS con invocaBancs, va REST+WebFlux. ¿Está OK? Sí, está OK."*
+- BUS + tipo SOAP → **HIGH** (mal-clasificado). Diálogo: *"Es BUS con invocaBancs → debió ir REST+WebFlux. El MCP con invocaBancs=true ignora projectType/webFramework. Se migró como SOAP → está mal-clasificado."*
 
-**Hallazgo documentado (caso histórico):** wsclientes0007 tiene 1 op y está migrado como SOAP — caso **mal-clasificado** previo a la formalización de la matriz. No se reclasifica por costo vs beneficio (ya funciona, pasa checklist, build verde). Los futuros servicios con 1 op deben usar el prompt REST, sin importar si tienen BD — la matriz es estricta por cantidad de operaciones. Detalles en el **Historial de decisiones** al final de este documento.
+**WAS:**
+- WAS + 1 op + tipo REST → ✅ **PASS**. Diálogo: *"Es WAS con 1 op, va REST+MVC. ¿Está OK? Sí, está OK."*
+- WAS + 2+ ops + tipo SOAP → ✅ **PASS**. Diálogo: *"Es WAS con N ops, va SOAP+MVC. ¿Está OK? Sí, está OK."*
+- WAS + 1 op + tipo SOAP → **HIGH** (mal-clasificado). Diálogo: *"Es WAS con 1 op → debió ir REST+MVC. Se migró como SOAP → está mal-clasificado."*
+- WAS + 2+ ops + tipo REST → **HIGH** (mal-clasificado). Diálogo: *"Es WAS con N ops → REST no soporta dispatching multi-operation para WAS, necesita Spring WS sobre MVC."*
+- WAS + tipo REST + `DB_USAGE: YES` → ✅ **PASS**. Diálogo: *"Es WAS con 1 op y BD → queda en REST+MVC con HikariCP+JPA. Correcto."*
 
-**Guardar en el contexto del reporte:** `projectType`, `goldStandard`, `opsLegacy`, `opsMigrated`, `opsMatch`, `expectedFramework`, `actualFramework`, `frameworkMatch`.
+**ORQ:**
+- ORQ + tipo REST (WebFlux) → ✅ **PASS** (cualquier cantidad de ops). Diálogo: *"Es ORQ, va REST+WebFlux via deploymentType:orquestador. ¿Está OK? Sí, está OK."*
+- ORQ + tipo SOAP → **HIGH** (mal-clasificado). Diálogo: *"Es ORQ → siempre va WebFlux. Se migró como SOAP → está mal-clasificado."*
+
+**Hallazgo documentado:** wsclientes0007 es BUS (IIB) con 1 op y está migrado como SOAP. Bajo la nueva matriz MCP, esto es **mal-clasificado** (BUS+invocaBancs siempre va REST+WebFlux). Es un caso legacy que NO se reclasifica ahora por costo vs beneficio (ya está funcionando, pasa checklist, build verde). Los futuros servicios BUS deben usar REST+WebFlux (via `invocaBancs: true`).
+
+**Guardar en el contexto del reporte:** `sourceType`, `invocaBancs`, `projectType`, `goldStandard`, `opsLegacy`, `opsMigrated`, `opsMatch`, `expectedFramework`, `actualFramework`, `frameworkMatch`.
 
 ---
 
@@ -362,6 +406,95 @@ grep -nE "public\s+[A-Z]\w+Response\s+[A-Z]\w+\(" <PATH>/src/main/java/com/pichi
 ```
 
 Método en PascalCase → **MEDIUM** (rompe convención Java).
+
+### Check 3.5 — Naming profesional: sin nombres genéricos en clases, variables ni campos [FB-JG]
+
+Clases, variables inyectadas, y campos deben ser **específicos al dominio de negocio**. Nombres genéricos como `service`, `adapter`, `port`, `request`, `response`, `data`, `result`, `dto`, `entity`, `mapper` **sin prefijo de dominio** dificultan la lectura, generan ambigüedad cuando el proyecto crece, y no pasan peer review.
+
+#### 3.5.1 — Clases con nombres genéricos
+
+```bash
+# Buscar clases sin dominio — solo nombre genérico
+find <PATH>/src/main/java/com/pichincha/sp -name "*.java" | xargs grep -l "^public class \|^public interface \|^public record " | while read f; do
+  BASENAME=$(basename "$f" .java)
+  echo "$BASENAME" | grep -qxE "(Service|ServiceImpl|Adapter|Port|InputPort|OutputPort|Controller|Mapper|Helper|Request|Response|Dto|Config|Constants|Exception)" \
+    && echo "GENERIC CLASS: $BASENAME in $f"
+done
+```
+
+Cualquier match → **HIGH**. Ejemplos de violación y corrección:
+
+| Incorrecto (genérico) | Correcto (dominio explícito) | Por qué |
+|---|---|---|
+| `ServiceImpl.java` | `CustomerServiceImpl.java` | No dice QUÉ servicio |
+| `Adapter.java` | `CustomerAdapterBancs.java` | No dice QUÉ adapta ni HACIA dónde |
+| `InputPort.java` | `ConsultarClienteInputPort.java` | No dice QUÉ operación expone |
+| `OutputPort.java` | `BancsCustomerOutputPort.java` | No dice QUÉ downstream ni dominio |
+| `Request.java` | `CustomerRequest.java` | No dice QUÉ request |
+| `Response.java` | `ConsultarContactoResponse.java` | No dice de QUÉ operación |
+| `Mapper.java` | `BancsCustomerMapper.java` | No dice QUÉ mapea ni entre qué capas |
+| `Helper.java` | `SoapResponseHelper.java` | No dice QUÉ ayuda |
+| `Controller.java` | `WSClientes0024Controller.java` | No dice QUÉ servicio |
+| `Config.java` | `WebClientProperties.java` | No dice QUÉ configura |
+
+#### 3.5.2 — Variables inyectadas con nombres genéricos
+
+```bash
+# Buscar campos inyectados con nombre genérico (private final <Type> service/port/adapter/mapper/helper)
+grep -rnE "private final \w+ (service|port|adapter|mapper|helper|client|repository|config)\s*;" \
+    <PATH>/src/main/java/com/pichincha/sp/
+```
+
+Cualquier match → **MEDIUM**. El nombre del campo debe reflejar el dominio:
+
+| Incorrecto | Correcto | Contexto |
+|---|---|---|
+| `private final CustomerServicePort service;` | `private final CustomerServicePort customerService;` | En el Controller |
+| `private final BancsCustomerPort port;` | `private final BancsCustomerPort bancsCustomerPort;` | En el Service |
+| `private final BancsClient client;` | `private final BancsClient bancsClient;` | En el Adapter |
+| `private final SoapCustomerMapper mapper;` | `private final SoapCustomerMapper soapCustomerMapper;` | En el Controller |
+| `private final BancsCustomerMapper mapper;` | `private final BancsCustomerMapper bancsCustomerMapper;` | En el Adapter |
+
+**Excepción aceptada:** `private final CustomLogLevelHandler customLogLevelHandler;` y `private final ServiceLogHelper log;` — son nombres canónicos del banco.
+
+#### 3.5.3 — Variables locales y parámetros genéricos
+
+```bash
+# Buscar variables locales con nombres genéricos en métodos de negocio
+grep -rnE "\b(var|String|Object|Mono|List)\s+(data|result|response|request|value|item|obj|temp|tmp|res|req|ret)\s*[=;]" \
+    <PATH>/src/main/java/com/pichincha/sp/application/service/
+```
+
+Cualquier match en `application/service/` → **MEDIUM**. En la capa de negocio, las variables deben contar la historia del dominio:
+
+| Incorrecto | Correcto | Contexto |
+|---|---|---|
+| `var result = bancsPort.getCustomerInfo(...)` | `var customerInfo = bancsPort.getCustomerInfo(...)` | Describe QUÉ contiene |
+| `var response = bancsClient.call(...)` | `var bancsResponse = bancsClient.call(...)` | Clarifica el ORIGEN |
+| `var data = mapper.toCustomer(...)` | `var customer = mapper.toCustomer(...)` | Nombra la ENTIDAD |
+| `var request = CustomerRequest.builder()...` | `var customerRequest = CustomerRequest.builder()...` | Evita colisión con parámetro |
+| `var item : collection` | `var address : customerAddresses` | Nombra la COSA que itera |
+
+**Excepción aceptada:** variables en lambdas de una línea (`ex -> ...`, `e -> ...`, `t -> ...`) y parámetros de MapStruct `@Mapping` — el contexto es suficiente.
+
+#### 3.5.4 — Constantes genéricas
+
+```bash
+# Buscar constantes con nombres que no identifican su propósito
+grep -rnE "static final String (ERROR|MESSAGE|CODE|VALUE|NAME|TYPE|STATUS|DEFAULT|PARAM)\s*=" \
+    <PATH>/src/main/java/com/pichincha/sp/
+```
+
+Cualquier match → **MEDIUM**. Las constantes deben autodocumentarse:
+
+| Incorrecto | Correcto |
+|---|---|
+| `static final String ERROR = "999";` | `static final String ERROR_CODE_GENERIC = "999";` |
+| `static final String MESSAGE = "OK";` | `static final String SUCCESS_MESSAGE_BANCS = "OK";` |
+| `static final String CODE = "0";` | `static final String SUCCESS_CODE = "0";` |
+| `static final String NAME = "WSClientes0024";` | `static final String WS_COMPONENTE = "WSClientes0024";` |
+
+**Referencia:** `CatalogExceptionConstants` del gold standard usa siempre el patrón `CONTEXT_NOUN`: `WS_RECURSO`, `SUCCESS_CODE`, `ERROR_CODE_GENERIC`, `BACKEND_CODE_IIB`.
 
 ### Check 3.4 — `postProcessWsdl.groovy` sin decapitalize activo [COMMIT-bf913b9] (solo SOAP)
 

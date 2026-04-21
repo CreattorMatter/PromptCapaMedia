@@ -26,16 +26,21 @@ Your expertise includes:
 
 Your objective is to produce a **complete, exhaustive, and verifiable** analysis document that allows another developer to implement the migration without seeing the legacy code. Every assertion must be backed by direct evidence from the source code.
 
-**Migration matrix (official, no exceptions):**
+**Migration matrix (official MCP-driven, no exceptions):**
 
-| WSDL `<portType>` operation count | Target prompt | Spring stack |
-|---|---|---|
-| 1 operation | `migracion/REST/02-REST-migrar-servicio.md` | WebFlux + `@RestController` |
-| 2 or more operations | `migracion/SOAP/02-SOAP-migrar-servicio.md` | Spring MVC + `@Endpoint` |
+| Legacy source | Condition | MCP key parameter | Target prompt | Spring stack |
+|---|---|---|---|---|
+| **BUS (IIB)** | Connects to BANCS | `invocaBancs: true` (overrides projectType/webFramework) | `migracion/REST/02-REST-migrar-servicio.md` | WebFlux + `@RestController` |
+| **WAS** | 1 WSDL operation | Standard MCP params | `migracion/REST/02-REST-migrar-servicio.md` | Spring MVC + `@RestController` |
+| **WAS** | 2+ WSDL operations | Standard MCP params | `migracion/SOAP/02-SOAP-migrar-servicio.md` | Spring MVC + `@Endpoint` |
+| **ORQ** | Always | `deploymentType: orquestador` (forces WebFlux) | `migracion/REST/02-REST-migrar-servicio.md` | WebFlux + `@RestController` |
 
-The rule applies identically to IIB, WAS, and ORQ sources. DB presence (`DB_USAGE: YES`) is reported in the analysis as an orthogonal fact — it does NOT override the operation-count rule.
+**Key rules:**
+- **BUS + `invocaBancs: true`:** the MCP ignores `projectType` and `webFramework` — it ALWAYS generates REST+WebFlux, regardless of operation count (1 or N operations).
+- **WAS:** operation count in the WSDL `<portType>` determines REST MVC (1 op) vs SOAP MVC (2+ ops). DB presence (`DB_USAGE: YES`) adds HikariCP+JPA inside the chosen prompt — it does NOT change the REST/SOAP decision.
+- **ORQ:** always WebFlux via `deploymentType: orquestador`, no persistence layer.
 
-**Note on Fabrics:** the Banco Pichincha Fabrics MCP archetype generates the initial scaffold (REST vs SOAP, project skeleton) based on a questionnaire we answer (operation count, DB usage, etc.). Your analysis FEEDS that questionnaire — be especially explicit about: (a) operation count, (b) presence/absence of DB, (c) WSDL vs Java endpoint origin.
+**Note on Fabrics:** the Banco Pichincha Fabrics MCP archetype generates the initial scaffold based on a questionnaire. The **decisive MCP parameter for BUS is `invocaBancs`** — when true, it overrides any other parameter. Your analysis FEEDS that questionnaire — be especially explicit about: (a) legacy source type (IIB/WAS/ORQ), (b) whether it connects to BANCS (`invocaBancs`), (c) operation count, (d) presence/absence of DB.
 
 ---
 
@@ -365,25 +370,29 @@ Cross-reference ALL information gathered in Steps A-F and generate the metrics t
 | Production concurrency | ? | additionalInstances from deploy-prod |
 ```
 
-### Step H: BUS vs WAS classification
+### Step H: Migration classification (MCP-driven matrix)
 
-Apply the **official matrix** based solely on WSDL `<portType>` operation count — no exceptions:
+Apply the **official MCP-driven matrix**. The decision depends on the **legacy source type** and the **MCP key parameter**:
 
-| WSDL operations | Target migration prompt | Spring stack |
-|---|---|---|
-| **1 operation** | `migracion/REST/02-REST-migrar-servicio.md` | WebFlux + `@RestController` |
-| **2 or more operations** | `migracion/SOAP/02-SOAP-migrar-servicio.md` | Spring MVC + `@Endpoint` (Spring WS dispatching) |
+| Legacy source | Condition | MCP key parameter | Target prompt | Spring stack |
+|---|---|---|---|---|
+| **BUS (IIB)** | Connects to BANCS | `invocaBancs: true` (overrides all) | REST prompt | WebFlux + `@RestController` |
+| **WAS** | 1 WSDL operation | Standard params | REST prompt | Spring MVC + `@RestController` |
+| **WAS** | 2+ WSDL operations | Standard params | SOAP prompt | Spring MVC + `@Endpoint` |
+| **ORQ** | Always | `deploymentType: orquestador` | REST prompt | WebFlux + `@RestController` |
 
-**Orthogonal fact — DB presence (`DB_USAGE` from Step E.2):**
-- If `DB_USAGE: YES`, the chosen prompt adds HikariCP + JPA/JDBC (works natively on Spring MVC; on WebFlux it needs R2DBC or a blocking boundary — flag as `ATTENTION_NEEDED_REST_WITH_DB` if it happens).
-- DB presence does NOT override the operation-count rule. Do NOT say "WAS with DB goes to SOAP". Say instead: "WAS with 1 op → REST; add HikariCP+JPA only if DB present".
+**BUS (IIB) rule:** If the service connects to BANCS (which is the case for virtually all IIB services), `invocaBancs: true` in the MCP **overrides** any other parameter (`projectType`, `webFramework`). The MCP will ALWAYS generate REST+WebFlux, regardless of how many operations the WSDL has (1 or N). This is because BUS services orchestrate BANCS via Core Adapter REST and benefit from the reactive non-blocking chain.
 
-**Historical mode labels (BUS / WAS Mode):** earlier versions of this toolkit used "BUS (WebFlux)" vs "WAS (MVC)" as the classification. That two-axis model is now **deprecated**. Use the operation-count matrix above. If you must reference the old labels for continuity, treat BUS/WAS as informational (source type), not as stack choice.
+**WAS rule:** Operation count in the WSDL `<portType>` determines REST MVC (1 op) vs SOAP MVC (2+ ops). Both use Spring MVC (blocking, Undertow). If `DB_USAGE: YES`, add HikariCP+JPA inside the chosen prompt — it does NOT change the REST/SOAP decision.
+
+**ORQ rule:** `deploymentType: orquestador` forces WebFlux. ORQs have no DB, no persistence layer — just orchestration.
 
 Document the classification with supporting evidence:
-- WSDL `<portType>` operation count (the ONLY decision input for stack)
+- Legacy source type: IIB (BUS) | WAS | ORQ
+- Connects to BANCS: YES | NO (for BUS, this is the decisive parameter)
+- WSDL `<portType>` operation count (decisive for WAS only)
 - Number of UMPs/external TXs found (informational)
-- `DB_USAGE: YES | NO` (orthogonal — drives HikariCP+JPA add-on, not the prompt choice)
+- `DB_USAGE: YES | NO` (orthogonal — drives HikariCP+JPA add-on for WAS, not the prompt choice)
 - additionalInstances in production (volume indicator, informational)
 
 ### Step I: Generate final document `ANALISIS_<ServiceName>.md`
@@ -410,7 +419,7 @@ The file `ANALISIS_<ServiceName>.md` must contain ALL of the following sections,
 | SOAPAction | <SOAPAction URI> |
 | BIAN Domain | <domain if known, or NO EVIDENCE> |
 | Analysis Date | <current date> |
-| Target Classification | BUS (WebFlux) | WAS (MVC) |
+| Target Classification | <BUS: REST+WebFlux | WAS 1op: REST+MVC | WAS 2+ops: SOAP+MVC | ORQ: REST+WebFlux> |
 ```
 
 ### 2. General Service Description
@@ -656,36 +665,45 @@ This table is **MANDATORY** and must be filled with actual data from the analysi
 | Production concurrency | ? | additionalInstances from deploy-prod |
 ```
 
-### 17. Migration Mode Classification (official matrix)
+### 17. Migration Mode Classification (official MCP-driven matrix)
 
 ```markdown
 ## Service Classification
 
+**Legacy source type:** <IIB (BUS) | WAS | ORQ>
+**Connects to BANCS (invocaBancs):** <YES | NO>
 **WSDL operation count (portType):** <N>
 **DB_USAGE:** <YES | NO>
 
-**Target migration prompt:**
-- 1 op  -> `migracion/REST/02-REST-migrar-servicio.md`
-- 2+ op -> `migracion/SOAP/02-SOAP-migrar-servicio.md`
+**MCP-driven matrix (mandatory):**
 
-**Spring stack:**
-- 1 op  -> Spring WebFlux + `@RestController` (reactive, Netty)
-- 2+ op -> Spring MVC + `@Endpoint` (servlet, Undertow; Spring WS dispatching on top of MVC)
+| Source | Condition | MCP key param | Stack | Prompt |
+|--------|-----------|---------------|-------|--------|
+| BUS (IIB) | invocaBancs=true | `invocaBancs: true` (overrides all) | REST + WebFlux | REST prompt |
+| WAS | 1 op | standard params | REST + MVC | REST prompt |
+| WAS | 2+ ops | standard params | SOAP + MVC | SOAP prompt |
+| ORQ | always | `deploymentType: orquestador` | REST + WebFlux | REST prompt |
+
+**This service classification:**
+- Source type: <IIB | WAS | ORQ>
+- Decisive parameter: <invocaBancs: true | operation count: N | deploymentType: orquestador>
+- Target prompt: <REST | SOAP>
+- Spring stack: <WebFlux + @RestController | Spring MVC + @RestController | Spring MVC + @Endpoint>
 
 **Persistence (add-on inside the chosen prompt, when DB_USAGE = YES):**
-- HikariCP + JPA/JDBC + Oracle (team standard, works natively on Spring MVC)
-- On WebFlux: requires R2DBC or explicit blocking boundary -> flag as `ATTENTION_NEEDED_REST_WITH_DB`
-
-**Legacy source type (informational only, does NOT drive the matrix):** <IIB | WAS | ORQ>
+- WAS + MVC: HikariCP + JPA/JDBC + Oracle (team standard, works natively on Spring MVC)
+- BUS/ORQ + WebFlux: requires R2DBC or explicit blocking boundary -> flag as `ATTENTION_NEEDED_WEBFLUX_WITH_DB` (rare case)
 
 **Evidence:**
+- Legacy source type: <IIB | WAS | ORQ> (from file analysis: *.esql -> IIB, *.java + web.xml -> WAS)
+- Connects to BANCS: <YES/NO - evidence: UMP calls / HTTPRequest nodes / @WebServiceRef>
 - WSDL operation count: <N> (from `<wsdl:portType>` in `<file>.wsdl`)
 - Has own database: <YES/NO - evidence>
 - Number of external TXs orchestrated: <number - list>
 - additionalInstances in production: <number>
 - Estimated volume: <high/medium/low - source of estimation>
 
-**REMINDER:** the REST/SOAP choice is decided strictly by operation count. Never add "but WAS+DB so use SOAP". If DB is present, add HikariCP+JPA to whichever prompt was chosen by the count.
+**REMINDER:** For BUS (IIB) services that connect to BANCS, `invocaBancs: true` overrides everything — always REST+WebFlux regardless of operation count. For WAS, operation count decides. For ORQ, always WebFlux.
 ```
 
 ### 18. Intentionally Omitted Items

@@ -88,16 +88,16 @@ For each ORQ operation:
 
 **Output:** Brief description of error strategy. Do NOT enumerate every error code unless trivially few.
 
-### Step E: Classification (always BUS for ORQ)
+### Step E: Classification (ORQ → always REST + WebFlux)
 
 ORQ services have NO database and orchestrate multiple downstream calls. They classify as:
 
-The migration mode is decided solely by WSDL `<portType>` operation count — DB presence does NOT override the count rule:
+**ORQ services ALWAYS use REST + WebFlux**, regardless of operation count. The MCP parameter `deploymentType: orquestador` forces WebFlux — it overrides any other parameter.
 
-- **1 operation** -> REST prompt (Spring WebFlux + `@RestController`)
-- **2+ operations** -> SOAP prompt (Spring MVC + `@Endpoint`, Spring WS dispatching on top of MVC)
+- **Any number of operations** -> REST prompt (Spring WebFlux + `@RestController`)
+- MCP parameter: `deploymentType: orquestador`
 
-For ORQ services specifically: no DB, no persistence layer — just orchestration. The stack matches the operation count.
+For ORQ services specifically: no DB, no persistence layer — just orchestration. The reactive non-blocking chain of WebFlux is ideal for services that fan out to multiple downstream calls.
 
 ---
 
@@ -118,7 +118,7 @@ The file `ANALISIS_ORQ_<ServiceName>.md` must contain:
 | Operation(s) | <list> |
 | Protocol | SOAP 1.1 over HTTP |
 | Analysis Date | <current date> |
-| Migration Mode | REST (1 op) | SOAP (2+ ops) |
+| Migration Mode | REST + WebFlux (always for ORQ, via `deploymentType: orquestador`) |
 ```
 
 ### 2. Exposed Operations
@@ -138,10 +138,11 @@ For each operation: which input fields go to which downstream call; which downst
 Brief: pass-through | wrap | custom catalogue. List the error codes only if there are <10.
 
 ### 6. Migration Mode Recommendation
-- WSDL `<portType>` operation count is the only decision input
-- **1 operation** -> REST prompt (Spring WebFlux + `@RestController`)
-- **2+ operations** -> SOAP prompt (Spring MVC + `@Endpoint`, Spring WS dispatching on top of MVC)
-- ORQs have no DB, so no HikariCP+JPA add-on is needed in either case
+- ORQ services **always** use REST + WebFlux via MCP parameter `deploymentType: orquestador`
+- The MCP forces WebFlux regardless of operation count (1 or N operations)
+- **Any number of operations** -> REST prompt (Spring WebFlux + `@RestController`)
+- ORQs have no DB, so no HikariCP+JPA add-on is needed
+- The reactive non-blocking chain is ideal for ORQ fan-out patterns (parallel downstream calls via `Mono.zip()`)
 
 ### 7. Uncertainties
 Anything ambiguous, especially `UNEXPECTED_LOGIC_IN_ORQ` flags.
