@@ -274,6 +274,33 @@ grep -l "extends.*Port\s" <PATH>/src/main/java/com/pichincha/sp/infrastructure/
 
 Esperado: **0 archivos** (deben usar `implements` sobre interfaces). **MEDIUM**.
 
+### Check 1.6 — Service Purity: CERO métodos privados en services [FB-JG]
+
+Los services (`application/service/`) deben contener **SOLO** las implementaciones de los métodos de la interfaz del input port. Son orquestadores puros — delegan a output ports y a utilities de `application/util/`. **CERO métodos privados** (validaciones, normalizaciones, formateos, builders) dentro de la clase service.
+
+```bash
+# Buscar métodos privados en services (excluyendo campos private final)
+grep -rnE "^\s+private\s+(?!final)" <PATH>/src/main/java/com/pichincha/sp/application/service/*.java
+```
+
+Cualquier match → **HIGH**. Acción: extraer cada método privado a una clase helper en `application/util/`:
+- `private void validateRequest(...)` → `application/util/<Domain>ValidationHelper.java`
+- `private <Type> normalize*(...)` → `application/util/<Domain>NormalizationHelper.java`
+- `private <Type> format*(...)` → `application/util/<Domain>FormatHelper.java`
+- `private <Type> build*(...)` → `application/util/<Domain>BuilderHelper.java`
+
+```bash
+# Verificar que existen helpers en application/util/ si el servicio tiene lógica de negocio
+find <PATH>/src/main/java/com/pichincha/sp/application/util/ -name "*Helper.java" -o -name "*Util.java" | wc -l
+```
+
+- 0 archivos y el servicio tiene validaciones/normalizaciones → **HIGH** (la lógica está enterrada en el service).
+- ≥ 1 archivo → ✅ PASS (la lógica está correctamente extraída).
+
+**Justificación:** services con métodos privados se convierten en clases gordas que violan SRP, son difíciles de testear unitariamente en aislamiento, y generan conflictos de merge cuando múltiples desarrolladores tocan el mismo archivo. Extraer a `application/util/` hace cada concern independientemente testeable y reutilizable entre services.
+
+**Referencia:** regla incorporada para evitar la acumulación de lógica auxiliar en services observada en migraciones anteriores.
+
 ---
 
 ## BLOQUE 2 — Logging y tracing

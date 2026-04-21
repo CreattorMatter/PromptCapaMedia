@@ -172,6 +172,26 @@ grep -r "import jakarta" src/main/java/**/domain/
 **Rule 3 -- `application/service/` NEVER imports classes from `infrastructure/`:**
 The application layer only knows about ports (interfaces) and domain models. Never infrastructure DTOs, adapters, config, or mappers.
 
+**Rule 3b -- Service Purity: services contain ONLY @Override methods from the input port interface:**
+Service classes MUST NOT have private helper methods (validations, normalizations, formatters, builders). All auxiliary logic MUST be extracted to `application/util/<Domain>*Helper.java` classes. The service is a pure orchestrator -- it calls utilities and output ports, nothing else.
+```java
+// CORRECT -- service delegates to external helpers
+@Override
+@BpLogger
+public Mono<Customer> getCustomerByIdentification(
+    CustomerRequest request,
+    HeaderRequestModel headerRequestModel) {
+    return Mono.fromCallable(() -> {
+        CustomerValidationHelper.validateRequest(request);
+        return CustomerNormalizationHelper.normalizeIdentification(request);
+    }).flatMap(bancsPort::getCustomerInfo);
+}
+
+// INCORRECT -- private methods pollute the service
+private void validateRequest(CustomerRequest request) { ... }  // NO
+private CustomerRequest normalizeIdentification(...) { ... }    // NO
+```
+
 **Rule 4 -- Stack constraints:**
 - This prompt always produces a **Spring MVC** stack (servlet/Undertow) with Spring WS `@Endpoint` dispatching on top. NOT WebFlux.
 - If the service has a database (Oracle/JPA) -> add HikariCP + JPA (Rule 4.1). Works natively on Spring MVC.
@@ -1408,6 +1428,24 @@ grep -c "@Builder" src/main/java/**/domain/model/*.java src/main/java/**/domain/
 
 **Objective:** Create ports (interfaces) and services that orchestrate business logic.
 
+**MANDATORY — Service Purity Rule (NEVER violate):**
+
+Service classes (`application/service/`) MUST contain **ONLY** the implementation of the input port interface methods. They are **pure orchestrators** that delegate to output ports and domain utilities. **ZERO private helper methods** are allowed inside the service class.
+
+**What MUST NOT be in the service:**
+- `private void validateRequest(...)` — move to `application/util/<Domain>ValidationHelper.java`
+- `private <Type> normalize*(...)` — move to `application/util/<Domain>NormalizationHelper.java`
+- `private <Type> format*(...)` — move to `application/util/<Domain>FormatHelper.java`
+- `private <Type> build*(...)` — move to `application/util/<Domain>BuilderHelper.java`
+- Any `private` method with business logic — extract to a utility class in `application/util/`
+
+**What MUST be in the service:**
+- `@Override` methods implementing the input port interface
+- Constructor-injected dependencies (`private final` fields)
+- Class annotations (`@Service`, `@RequiredArgsConstructor`)
+
+**Why:** Services that accumulate private helpers become fat classes that violate SRP, are hard to unit test in isolation, and cause merge conflicts when multiple developers touch the same file. Extracting to `application/util/` makes each concern independently testable and reusable across services.
+
 **Structure:**
 ```
 com.pichincha.sp/
@@ -1415,8 +1453,8 @@ com.pichincha.sp/
     port/
       input/           <- 1 interface per SOAP operation
       output/          <- 1 interface per downstream (BANCS TX, Stratio, etc.)
-    service/           <- Implementation that implements input port
-    util/              <- ServiceLogHelper, shared business logic utilities (validations, formatting)
+    service/           <- ONLY @Override methods implementing input port (ZERO private helpers)
+    util/              <- ServiceLogHelper, validation helpers, normalization helpers, formatting helpers
 ```
 
 **Actions:**
@@ -1482,7 +1520,51 @@ public class ServiceLogHelper {
 
 This wrapper provides a clean API over `CustomLogLevelHandler`, eliminating the need to pass `Thread.currentThread().getStackTrace()` and `CustomLogLevel` constants at every call site. Use `ServiceLogHelper` in all services instead of injecting `CustomLogLevelHandler` directly.
 
-5. **Create service** (implements input port, implements logic from ANALYSIS section 5.7):
+5. **Create utility helpers** (extracted business logic -- in `application/util/`):
+
+```java
+package com.pichincha.sp.application.util;
+
+import com.pichincha.sp.domain.request.CustomerRequest;
+import com.pichincha.sp.domain.exception.BusinessValidationException;
+
+public final class CustomerValidationHelper {
+
+  private CustomerValidationHelper() {}
+
+  public static void validateRequest(CustomerRequest request) {
+    // Implement validations from ANALYSIS section 5.8
+    if (request.identificacion() == null
+        || request.identificacion().isBlank()) {
+      throw new BusinessValidationException(
+          "1", "Identificacion es requerida");
+    }
+    // ... additional validations
+  }
+}
+```
+
+```java
+package com.pichincha.sp.application.util;
+
+import com.pichincha.sp.domain.request.CustomerRequest;
+
+public final class CustomerNormalizationHelper {
+
+  private CustomerNormalizationHelper() {}
+
+  public static CustomerRequest normalizeIdentification(
+      CustomerRequest request) {
+    // Implement normalizations from ANALYSIS section 5.7
+    return CustomerRequest.builder()
+        .identificacion(request.identificacion().trim())
+        .tipoIdentificacion(request.tipoIdentificacion())
+        .build();
+  }
+}
+```
+
+6. **Create service** (implements input port -- **ONLY @Override methods, ZERO private helpers**):
 ```java
 @Service
 @RequiredArgsConstructor
@@ -1498,24 +1580,25 @@ public class ConsultarClienteService implements ConsultarClienteInputPort {
 
     return Mono
         .fromCallable(() -> {
-          validateRequest(request);
-          return normalizeIdentification(request);
+          CustomerValidationHelper.validateRequest(request);
+          return CustomerNormalizationHelper
+              .normalizeIdentification(request);
         })
-        .flatMap(normalizedRequest -> bancsPort.getCustomerInfo(normalizedRequest))
+        .flatMap(normalizedRequest ->
+            bancsPort.getCustomerInfo(normalizedRequest))
         .doOnError(error -> log.error(
             "Service: Error al consultar cliente: {}",
             error.getMessage() != null ? error.getMessage() : ""))
-        .doFinally(signalType -> log.info(
+        .doFinally(signalType -> log.debug(
             "Service: Finalizando consulta. Signal: {}",
             signalType));
   }
 
-  // validateRequest() -- implement validations from ANALYSIS section 5.8
-  // normalizeIdentification() -- implement normalizations from ANALYSIS section 5.7
+  // NO private methods here -- all extracted to application/util/
 }
 ```
 
-**IMPORTANT:** Implement the step-by-step logic as it appears in the ANALYSIS section "5.7 Business logic STEP BY STEP". Do not skip steps.
+**IMPORTANT:** Implement the step-by-step logic as it appears in the ANALYSIS section "5.7 Business logic STEP BY STEP". Do not skip steps. All validation, normalization, and transformation logic MUST be in `application/util/` helper classes -- the service ONLY contains @Override methods.
 
 #### GATE 3 -- Application Verification
 
@@ -1543,6 +1626,14 @@ grep "implements.*InputPort" src/main/java/**/service/*.java
 # CHECK 6: @RequiredArgsConstructor in service (without Impl suffix)
 grep -B5 "class.*Service " src/main/java/**/service/*.java | grep "@RequiredArgsConstructor"
 # EXPECTED: at least 1 match
+
+# CHECK 7: ZERO private methods in service classes (Service Purity Rule)
+grep -rn "private.*(" src/main/java/**/application/service/*.java | grep -v "private final"
+# EXPECTED: empty -- all helper logic must be in application/util/
+
+# CHECK 8: Utility helpers exist in application/util/
+find src/main/java -path "*/application/util/*Helper.java" | head -10
+# EXPECTED: at least 1 helper if the service has validations or normalizations
 ```
 
 **If all pass:** Update `migration-context.json` with `bloque_03_application: "completado"`.

@@ -155,6 +155,25 @@ grep -r "import jakarta" src/main/java/**/domain/
 **Rule 3 — `application/service/` NEVER imports classes from `infrastructure/`:**
 The application layer only knows about ports (interfaces) and domain models. Never infrastructure DTOs, adapters, config, or mappers.
 
+**Rule 3b — Service Purity: services contain ONLY @Override methods from the input port interface:**
+Service classes MUST NOT have private helper methods (validations, normalizations, formatters, builders). All auxiliary logic MUST be extracted to `application/util/<Domain>*Helper.java` classes. The service is a pure orchestrator — it calls utilities and output ports, nothing else.
+```java
+// CORRECT — service delegates to external helpers
+@Override
+@BpLogger
+public Mono<Customer> getCustomerByIdentification(
+    CustomerRequest request, SoapRequestContext ctx) {
+    return Mono.fromCallable(() -> {
+        CustomerValidationHelper.validateRequest(request);
+        return CustomerNormalizationHelper.normalizeIdentification(request);
+    }).flatMap(bancsPort::getCustomerInfo);
+}
+
+// INCORRECT — private methods pollute the service
+private void validateRequest(CustomerRequest request) { ... }  // NO
+private CustomerRequest normalizeIdentification(...) { ... }    // NO
+```
+
 **Rule 4 — Stack and persistence constraints (depends on legacy source type):**
 
 This prompt produces **two possible stacks** depending on the legacy source:
@@ -1204,13 +1223,32 @@ grep -c "@Builder" src/main/java/**/domain/**/*.java
 
 **Objective:** Create ports (interfaces) and services that orchestrate business logic.
 
+**MANDATORY — Service Purity Rule (NEVER violate):**
+
+Service classes (`application/service/`) MUST contain **ONLY** the implementation of the input port interface methods. They are **pure orchestrators** that delegate to output ports and domain utilities. **ZERO private helper methods** are allowed inside the service class.
+
+**What MUST NOT be in the service:**
+- `private void validateRequest(...)` — move to `application/util/<Domain>ValidationHelper.java`
+- `private <Type> normalize*(...)` — move to `application/util/<Domain>NormalizationHelper.java`
+- `private <Type> format*(...)` — move to `application/util/<Domain>FormatHelper.java`
+- `private <Type> build*(...)` — move to `application/util/<Domain>BuilderHelper.java`
+- Any `private` method with business logic — extract to a utility class in `application/util/`
+
+**What MUST be in the service:**
+- `@Override` methods implementing the input port interface
+- Constructor-injected dependencies (`private final` fields)
+- Class annotations (`@Service`, `@RequiredArgsConstructor`)
+
+**Why:** Services that accumulate private helpers become fat classes that violate SRP, are hard to unit test in isolation, and cause merge conflicts when multiple developers touch the same file. Extracting to `application/util/` makes each concern independently testable and reusable across services.
+
 **Structure:**
 ```
 com.pichincha.sp/
   application/
     input/port/        <- 1 interface per operation
     output/port/       <- 1 interface per downstream (BANCS TX, etc.)
-    service/           <- Implementation that implements input port
+    service/           <- ONLY @Override methods implementing input port (ZERO private helpers)
+    util/              <- Validation, normalization, formatting helpers (extracted from service)
 ```
 
 **Actions:**
@@ -1243,19 +1281,62 @@ public interface BancsCustomerPort {
 }
 ```
 
-3. **Create service** (implements input port):
+3. **Create utility helpers** (extracted business logic — in `application/util/`):
+
+```java
+package com.pichincha.sp.application.util;
+
+import com.pichincha.sp.domain.request.CustomerRequest;
+import com.pichincha.sp.domain.exception.BusinessValidationException;
+import lombok.experimental.UtilityClass;
+
+@UtilityClass
+public class CustomerValidationHelper {
+
+    public static void validateRequest(CustomerRequest request) {
+        // Implement validations from ANALYSIS section 5.8
+        if (request.identificacion() == null
+            || request.identificacion().isBlank()) {
+            throw new BusinessValidationException(
+                "1", "Identificacion es requerida");
+        }
+        // ... additional validations
+    }
+}
+```
+
+```java
+package com.pichincha.sp.application.util;
+
+import com.pichincha.sp.domain.request.CustomerRequest;
+import lombok.experimental.UtilityClass;
+
+@UtilityClass
+public class CustomerNormalizationHelper {
+
+    public static CustomerRequest normalizeIdentification(
+        CustomerRequest request) {
+        // Implement normalizations from ANALYSIS section 5.7
+        return CustomerRequest.builder()
+            .identificacion(request.identificacion().trim())
+            .tipoIdentificacion(request.tipoIdentificacion())
+            .build();
+    }
+}
+```
+
+4. **Create service** (implements input port — **ONLY @Override methods, ZERO private helpers**):
 ```java
 package com.pichincha.sp.application.service;
 
 import com.pichincha.common.trace.logger.annotation.BpLogger;
 import com.pichincha.sp.application.input.port.CustomerServicePort;
 import com.pichincha.sp.application.output.port.BancsCustomerPort;
+import com.pichincha.sp.application.util.CustomerValidationHelper;
+import com.pichincha.sp.application.util.CustomerNormalizationHelper;
 import com.pichincha.sp.domain.customer.Customer;
 import com.pichincha.sp.domain.header.SoapRequestContext;
 import com.pichincha.sp.domain.request.CustomerRequest;
-import com.pichincha.sp.domain.exception.BusinessValidationException;
-import com.pichincha.common.trace.logger.logger.custom.level.CustomLogLevel;
-import com.pichincha.common.trace.logger.logger.custom.level.CustomLogLevelHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
@@ -1264,7 +1345,6 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class CustomerServiceImpl implements CustomerServicePort {
     private final BancsCustomerPort bancsPort;
-    private final CustomLogLevelHandler customLogLevelHandler;
 
     @Override
     @BpLogger
@@ -1272,18 +1352,18 @@ public class CustomerServiceImpl implements CustomerServicePort {
         CustomerRequest request, SoapRequestContext requestContext) {
 
         return Mono.fromCallable(() -> {
-            validateRequest(request);
-            return normalizeIdentification(request);
+            CustomerValidationHelper.validateRequest(request);
+            return CustomerNormalizationHelper
+                .normalizeIdentification(request);
         })
         .flatMap(bancsPort::getCustomerInfo);
     }
 
-    // validateRequest() — from ANALYSIS section 5.8
-    // normalizeIdentification() — from ANALYSIS section 5.7
+    // NO private methods here — all extracted to application/util/
 }
 ```
 
-**IMPORTANT:** The service uses ONLY the output port (NOT the adapter directly). Implement step-by-step logic from the ANALYSIS.
+**IMPORTANT:** The service uses ONLY the output port (NOT the adapter directly). The service contains ONLY @Override methods — all validation, normalization, formatting, and transformation logic MUST be in `application/util/` helper classes.
 
 **CONDITIONAL — Strategy pattern:** If the ANALYSIS identifies dual-source (BANCS + OCP/Stratio), also create `CustomerQueryStrategyPort` and strategy implementations. See Block 4.16.
 
@@ -1305,6 +1385,14 @@ grep -r "import.*infrastructure" src/main/java/**/application/
 # CHECK 4: ZERO @Autowired in the entire project
 grep -r "@Autowired" src/main/java/
 # EXPECTED: empty
+
+# CHECK 5: ZERO private methods in service classes (Service Purity Rule)
+grep -rn "private.*(" src/main/java/**/application/service/*.java | grep -v "private final"
+# EXPECTED: empty — all helper logic must be in application/util/
+
+# CHECK 6: Utility helpers exist in application/util/
+find src/main/java -path "*/application/util/*Helper.java" | head -10
+# EXPECTED: at least 1 helper if the service has validations or normalizations
 ```
 
 **If all pass:** Update `migration-context.json` with `bloque_03_application: "completado"`.
