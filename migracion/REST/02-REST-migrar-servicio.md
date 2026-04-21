@@ -394,15 +394,17 @@ var customer = bancsMapper.toCustomer(bancsResponse);
 var soapResponse = soapMapper.toSoap(customer);
 ```
 
-**Constants — self-documenting with CONTEXT_NOUN pattern:**
+**Constants — self-documenting with CONTEXT_NOUN pattern (codes from `sqb-cfg-errores-errors/errores.xml`):**
 ```java
-// INCORRECT
+// INCORRECT — fabricated code, not in the bank catalog
 static final String ERROR = "999";
 static final String MESSAGE = "OK";
 static final String CODE = "0";
 
-// CORRECT
-static final String ERROR_CODE_GENERIC = "999";
+// CORRECT — codes from errores.xml catalog
+static final String ERROR_CODE_SERVICE = "9999";       // "Error al procesar el servicio"
+static final String ERROR_CODE_BANCS_INVOKE = "9929";  // "Error al invocar transaccion Bancs"
+static final String ERROR_CODE_BANCS_PARSE = "9922";   // "No se ha podido interpretar la respuesta de Bancs"
 static final String SUCCESS_MESSAGE_BANCS = "OK";
 static final String SUCCESS_CODE = "0";
 ```
@@ -1817,8 +1819,9 @@ public class CustomerAdapterBancs implements BancsCustomerPort {
                 ERROR_TX_COMPONENT));
         }
         if (Objects.isNull(bancsResponse.body())) {
-            return Mono.error(new GlobalErrorException("999",
-                "Respuesta de Adaptador Bancs sin body para: "
+            return Mono.error(new GlobalErrorException(
+                CatalogExceptionConstants.ERROR_CODE_BANCS_PARSE,
+                "No se ha podido interpretar la respuesta de Bancs para: "
                     + request.identificacion(),
                 ERROR_TX_COMPONENT));
         }
@@ -2294,7 +2297,13 @@ public class CatalogExceptionConstants {
     public static final String BACKEND_CODE = "00000";
 
     public static final String SUCCESS_CODE = "0";
-    public static final String ERROR_CODE_GENERIC = "999";
+
+    // Codes from sqb-cfg-errores-errors/errores.xml — NEVER fabricate
+    public static final String ERROR_CODE_SERVICE = "9999";       // Error al procesar el servicio (catch-all)
+    public static final String ERROR_CODE_BANCS_INVOKE = "9929";  // Error al invocar transaccion Bancs
+    public static final String ERROR_CODE_BANCS_PARSE = "9922";   // No se ha podido interpretar la respuesta de Bancs
+    public static final String ERROR_CODE_HEADER = "9927";        // Datos de la cabecera no se han asignado
+    public static final String ERROR_CODE_TIMEOUT = "9991";       // Tiempo de respuesta del servicio expirado
 
     public static final String SUCCESS_MESSAGE_BANCS = "OK";
     public static final String SUCCESS_MENSAJE_NEGOCIO =
@@ -2727,8 +2736,8 @@ grep "livenessProbe" helm/values-dev.yaml
 2. **`CustomerAdapterBancsTest`** — Tests for:
    - Successful Bancs query -> Customer returned
    - Bancs error response -> GlobalErrorException with code/message
-   - Null body -> GlobalErrorException "999"
-   - Empty collection -> GlobalErrorException "404"
+   - Null body -> GlobalErrorException "9922" (errores.xml: No se ha podido interpretar la respuesta)
+   - Empty collection -> GlobalErrorException with BANCS error code propagated
    - BancsAPIClientException -> GlobalErrorException with standard message
    - RuntimeException -> GlobalErrorException with TX prefix
 

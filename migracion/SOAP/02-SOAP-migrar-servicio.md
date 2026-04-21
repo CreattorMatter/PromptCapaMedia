@@ -368,7 +368,7 @@ void givenMissingBancsHeader_whenConsultar_thenReturnsFatal() {
 | `HeaderRequestValidator.validate(...).isPresent()` | `buildFatalResponse(ctx, "1", msg)` | FATAL |
 | `catch (BusinessValidationException e)` | `buildErrorResponse(ctx, code, msg)` | ERROR |
 | `catch (BancsOperationException e)` | `buildBancsErrorResponse(ctx, code, msg, txId)` | FATAL |
-| `catch (Exception e)` (catch-all) | `buildFatalResponse(ctx, "999", "Error interno del servicio")` | FATAL |
+| `catch (Exception e)` (catch-all) | `buildFatalResponse(ctx, ERROR_CODE_SERVICE, "Error al procesar el servicio")` | FATAL |
 
 **Origen legacy:** esta convención viene de los ESQL del broker IIB. Evidencia:
 - [`0078/legacy/.../consultarClienteSAR.esql:51`](../../0078/legacy/_repo/com/bpichincha/esb/wsclientes0078/consultarClienteSAR.esql) — `SET error.tipo = 'ERROR'` para validación de input
@@ -674,14 +674,16 @@ var customerInfo = bancsPort.getCustomerInfo(customerRequest);
 var customer = bancsMapper.toCustomer(bancsResponse);
 ```
 
-**Constants -- self-documenting with CONTEXT_NOUN pattern:**
+**Constants -- self-documenting with CONTEXT_NOUN pattern (codes from `sqb-cfg-errores-errors/errores.xml`):**
 ```java
-// INCORRECT
+// INCORRECT -- fabricated code, not in the bank catalog
 static final String ERROR = "999";
 static final String MESSAGE = "OK";
 
-// CORRECT
-static final String ERROR_CODE_GENERIC = "999";
+// CORRECT -- codes from errores.xml catalog
+static final String ERROR_CODE_SERVICE = "9999";       // "Error al procesar el servicio"
+static final String ERROR_CODE_BANCS_INVOKE = "9929";  // "Error al invocar transaccion Bancs"
+static final String ERROR_CODE_BANCS_PARSE = "9922";   // "No se ha podido interpretar la respuesta de Bancs"
 static final String SUCCESS_MESSAGE_BANCS = "OK";
 ```
 
@@ -1912,20 +1914,22 @@ public abstract class BancsClientHelper {
     } catch (RuntimeException e) {
       // MANDATORY -- wraps WebClientResponseException and other transport errors.
       // Without this, a 502/503/timeout from Bancs bubbles up as a raw RuntimeException
-      // and the Controller's generic catch returns "999 Error interno del servicio"
+      // and the Controller's generic catch returns "9999 Error al procesar el servicio"
       // instead of propagating the real Bancs error code/message. Observed in production
       // when Bancs returned {"title":"...","errors":[{"code":"001","message":"502 BAD_GATEWAY"}]}.
       log(CustomLogLevel.ERROR,
           "[guid: {}] Exception calling Bancs TX {}: {}", guid, txCode, e.getMessage());
       throw new BancsOperationException(
-          "999",
-          e.getMessage() != null ? e.getMessage() : "Bancs integration exception",
+          CatalogExceptionConstants.ERROR_CODE_BANCS_INVOKE,  // 9929 from errores.xml
+          e.getMessage() != null ? e.getMessage() : "Error al invocar transaccion Bancs",
           txCode);
     }
     if (response == null) {
       log(CustomLogLevel.ERROR,
           "[guid: {}] Null response from Bancs for transaction {}", guid, txCode);
-      throw new BancsOperationException("999", "Empty response from Bancs", txCode);
+      throw new BancsOperationException(
+          CatalogExceptionConstants.ERROR_CODE_BANCS_PARSE,   // 9922 from errores.xml
+          "No se ha podido interpretar la respuesta de Bancs", txCode);
     }
     if (!Boolean.TRUE.equals(response.success())) {
       log(CustomLogLevel.ERROR,
@@ -2075,7 +2079,14 @@ public class CatalogExceptionConstants {
   // vía application.yml. Ver Rule 9c y sección 4.5.
 
   public static final String SUCCESS_CODE = "0";
-  public static final String ERROR_CODE_GENERIC = "999";
+
+  // Codes from sqb-cfg-errores-errors/errores.xml — NEVER fabricate
+  public static final String ERROR_CODE_SERVICE = "9999";       // Error al procesar el servicio (catch-all)
+  public static final String ERROR_CODE_BANCS_INVOKE = "9929";  // Error al invocar transaccion Bancs
+  public static final String ERROR_CODE_BANCS_PARSE = "9922";   // No se ha podido interpretar la respuesta de Bancs
+  public static final String ERROR_CODE_HEADER = "9927";        // Datos de la cabecera no se han asignado
+  public static final String ERROR_CODE_TIMEOUT = "9991";       // Tiempo de respuesta del servicio expirado
+
   public static final String SUCCESS_MESSAGE_BANCS = "OK";
   public static final String SUCCESS_MENSAJE_NEGOCIO = "Consulta exitosa";
 
@@ -2121,7 +2132,8 @@ public <Operacion>Response <operacion>(@RequestPayload <Operacion> request) {
   } catch (Exception e) {
     // tipo=FATAL, backend=IIB (catch-all técnico)
     return soapResponseHelper.buildFatalResponse(
-        ctx, "999", "Error interno del servicio");
+        ctx, CatalogExceptionConstants.ERROR_CODE_SERVICE,  // 9999 from errores.xml
+        "Error al procesar el servicio");
   }
 }
 ```
@@ -2841,7 +2853,7 @@ void givenRuntimeException_whenExecute_thenThrowsBancsOperationException() {
   // When & Then
   BancsOperationException ex = assertThrows(BancsOperationException.class,
       () -> helper.execute("061404", ctx, body, SomeDto.class));
-  assertEquals("999", ex.getErrorCode());
+  assertEquals("9929", ex.getErrorCode());  // errores.xml: Error al invocar transaccion Bancs
 }
 ```
 

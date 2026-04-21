@@ -489,12 +489,12 @@ Cualquier match → **MEDIUM**. Las constantes deben autodocumentarse:
 
 | Incorrecto | Correcto |
 |---|---|
-| `static final String ERROR = "999";` | `static final String ERROR_CODE_GENERIC = "999";` |
+| `static final String ERROR = "999";` | `static final String ERROR_CODE_SERVICE = "9999";` (del catálogo `errores.xml`) |
 | `static final String MESSAGE = "OK";` | `static final String SUCCESS_MESSAGE_BANCS = "OK";` |
 | `static final String CODE = "0";` | `static final String SUCCESS_CODE = "0";` |
 | `static final String NAME = "WSClientes0024";` | `static final String WS_COMPONENTE = "WSClientes0024";` |
 
-**Referencia:** `CatalogExceptionConstants` del gold standard usa siempre el patrón `CONTEXT_NOUN`: `WS_RECURSO`, `SUCCESS_CODE`, `ERROR_CODE_GENERIC`, `BACKEND_CODE_IIB`.
+**Referencia:** `CatalogExceptionConstants` debe usar el patrón `CONTEXT_NOUN` con códigos del catálogo oficial `sqb-cfg-errores-errors/errores.xml`: `WS_RECURSO`, `SUCCESS_CODE`, `ERROR_CODE_SERVICE` (9999), `ERROR_CODE_BANCS_INVOKE` (9929), `ERROR_CODE_BANCS_PARSE` (9922), `ERROR_CODE_HEADER` (9927).
 
 ### Check 3.4 — `postProcessWsdl.groovy` sin decapitalize activo [COMMIT-bf913b9] (solo SOAP)
 
@@ -618,17 +618,18 @@ grep -cE "^@Component|public class HeaderRequestValidator" \
 grep -A5 "public <T> T execute" <PATH>/src/main/java/com/pichincha/sp/infrastructure/output/adapter/bancs/helper/BancsClientHelper.java | grep -c "catch\s*(\s*RuntimeException"
 ```
 
-0 matches → **HIGH**. Sin este catch, `WebClientResponseException` burbujea como RuntimeException y el Controller devuelve "999 Error interno" en vez del error real de Bancs.
+0 matches → **HIGH**. Sin este catch, `WebClientResponseException` burbujea como RuntimeException y el Controller devuelve "9999 Error al procesar el servicio" genérico en vez del error real de Bancs.
 
-**Patrón requerido:**
+**Patrón requerido (códigos del catálogo `sqb-cfg-errores-errors/errores.xml`):**
 ```java
 try {
   response = doCall(txCode, ctx, body, responseType);
 } catch (BancsOperationException e) {
   throw e;
 } catch (RuntimeException e) {
-  throw new BancsOperationException("999",
-    e.getMessage() != null ? e.getMessage() : "Bancs integration exception",
+  throw new BancsOperationException(
+    CatalogExceptionConstants.ERROR_CODE_BANCS_INVOKE,  // "9929" from errores.xml
+    e.getMessage() != null ? e.getMessage() : "Error al invocar transaccion Bancs",
     txCode);
 }
 ```
