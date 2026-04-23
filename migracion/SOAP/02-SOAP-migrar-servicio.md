@@ -2284,6 +2284,9 @@ Si el servicio consume backends adicionales (DataPower, WSO2, WAS, etc.), agrega
 
 **MUST follow the gold standard wsclientes0015 structure EXACTLY.**
 
+**MANDATORY RULE — Preserve the MCP scaffold `application.yml`:**
+The MCP Fabrics generates an `application.yml` with properties that the bank's infrastructure expects (`spring.header`, `spring.application.name`, `optimus.*`, `web-filter.*`, etc.). You MUST preserve ALL existing properties from the scaffold. The ONLY property to REMOVE is `spring.main.lazy-initialization` (it causes issues with Spring WS). Everything else stays — you ADD your migration-specific properties (datasource, error-codes, service config, trace-logger, etc.) alongside the existing scaffold properties. NEVER replace the entire file — merge into it.
+
 **MANDATORY RULE — All legacy config variables in application.yml:**
 Every configuration variable identified in the ANALYSIS (Section 15 "Service Configuration") — from the service itself AND from its UMP dependencies — MUST have a corresponding entry in `application.yml`. This includes variables from `.properties` files, `Constantes.java`, `Propiedad.get()`, `Environment.cache.*`, `GestionarRecursoConfigurable`, `GestionarRecursoXML`, and `CatalogoAplicaciones.properties`.
 
@@ -2748,6 +2751,9 @@ container:
     - name: init-sh
       mountPath: /opt/build/init.sh
       subPath: init.sh
+
+pdb:
+  minAvailable: 1
 
 hpa:
   minReplicas: 1
