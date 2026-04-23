@@ -2285,13 +2285,14 @@ Si el servicio consume backends adicionales (DataPower, WSO2, WAS, etc.), agrega
 **MUST follow the gold standard wsclientes0015 structure EXACTLY.**
 
 **MANDATORY RULE — Preserve the MCP scaffold `application.yml`:**
-The MCP Fabrics generates an `application.yml` with properties that the bank's infrastructure expects (`spring.header`, `spring.application.name`, `optimus.*`, `web-filter.*`, etc.). You MUST preserve ALL existing properties from the scaffold. The ONLY property to REMOVE is `spring.main.lazy-initialization` (it causes issues with Spring WS). Everything else stays — you ADD your migration-specific properties (datasource, error-codes, service config, trace-logger, etc.) alongside the existing scaffold properties. NEVER replace the entire file — merge into it.
+The MCP Fabrics generates an `application.yml` with properties that the bank's infrastructure expects (`spring.header.channel`, `spring.header.medium`, `spring.application.name`, `optimus.*`, `web-filter.*`, etc.). You MUST preserve ALL existing properties from the scaffold. The ONLY property to REMOVE is `spring.main.lazy-initialization` (it causes issues with Spring WS). Everything else stays — you ADD your migration-specific properties (datasource, error-codes, service config, trace-logger, etc.) alongside the existing scaffold properties. NEVER replace the entire file — merge into it. In particular, `spring.header.channel: digital` and `spring.header.medium: web` MUST always be present in the final `application.yml`.
 
 **MANDATORY RULE — All legacy config variables in application.yml:**
 Every configuration variable identified in the ANALYSIS (Section 15 "Service Configuration") — from the service itself AND from its UMP dependencies — MUST have a corresponding entry in `application.yml`. This includes variables from `.properties` files, `Constantes.java`, `Propiedad.get()`, `Environment.cache.*`, `GestionarRecursoConfigurable`, `GestionarRecursoXML`, and `CatalogoAplicaciones.properties`.
 
-- **Functional values** (max records, resource names, component names, business timeouts, lengths, prefixes, flags): commit as literals or with inline default `${CCC_VAR:value}` when the value is known from the legacy code or config files.
+- **Functional values** (max records, resource names, component names, business timeouts, lengths, prefixes, flags): commit as literals in `application.yml` when the value is fixed and known from legacy code. If the value needs to be overridable per environment, use `${CCC_*}` WITHOUT inline defaults.
 - **Secrets and environment-dependent values** (DB URLs, passwords, tokens, credentials): use `${CCC_*}` WITHOUT defaults. Each `${CCC_*}` MUST have a corresponding entry in ALL 3 helm files (`helm/dev.yml`, `helm/test.yml`, `helm/prod.yml`).
+- **NEVER use inline defaults `${CCC_VAR:value}`** — all `${CCC_*}` variables get their values exclusively from Helm. No exceptions.
 - **NEVER fabricate values.** Only use values extracted from the legacy code, `.properties` files, CSV files, or XML config files. If the value is not available, use `${CCC_*}` and add a YAML comment: `# valor no disponible — obtener de <fuente>`.
 - **NEVER leave a variable undocumented.** If the ANALYSIS lists a property key, it MUST appear in `application.yml`.
 - **Only declare in Helm the `${CCC_*}` variables that are actually referenced in `application.yml`.** No orphan variables.
@@ -2312,9 +2313,7 @@ Every configuration variable identified in the ANALYSIS (Section 15 "Service Con
 - `management:` block -- not in gold standard
 - `trace-logger.payload.*` -- not in gold standard
 
-**Variable defaults: NEVER use inline defaults `${CCC_VAR:default}`.** All values come from environment (Helm). The gold standard never uses inline defaults.
-
-**Excepción única — `bancs.error-codes`:** los valores son constantes del catálogo oficial del banco (`00638` y `00045` no cambian entre entornos). Se permite inline default `${CCC_BANCS_ERROR_CODE_IIB:00638}` / `${CCC_BANCS_ERROR_CODE_BANCS_APP:00045}` para que el servicio arranque aunque el Helm no los declare — el ENV queda como válvula de escape si el banco decidiera cambiar un código oficial.
+**Variable defaults: NEVER use inline defaults `${CCC_VAR:default}`.** All `${CCC_*}` values come exclusively from Helm environment variables. No exceptions — not even for error codes from the official catalog. If a value is constant (e.g., error codes 00633/00634), use a fixed literal in `application.yml` instead of `${CCC_*:default}`.
 
 **CRITICAL: Each `ws-txNNNNNN.base-url` MUST match the adapter from the catalog `prompts/tx-adapter-catalog.json`.**
 
