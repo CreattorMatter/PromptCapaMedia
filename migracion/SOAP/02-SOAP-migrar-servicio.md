@@ -2752,6 +2752,9 @@ container:
       mountPath: /opt/build/init.sh
       subPath: init.sh
 
+pdb:
+  minAvailable: 1
+
 hpa:
   minReplicas: 1
   maxReplicas: 1
